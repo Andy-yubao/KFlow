@@ -61,3 +61,25 @@ class Index:
     """Aggregated index — cache rebuilt from individual files."""
     nodes: dict[str, IndexNode]
     derivations: dict[str, IndexDerivation]
+
+
+import secrets
+
+
+def generate_id(prefix: str) -> str:
+    """Generate a random 6-char lowercase hex ID with given prefix.
+
+    Args:
+        prefix: "nd" for node or "dv" for derivation.
+    Returns:
+        e.g. "nd_a1b2c3"
+    """
+    return f"{prefix}_{secrets.token_hex(3)}"
+
+
+def generate_unique_id(prefix: str, existing: set[str]) -> str:
+    """Generate an ID not present in the existing set. Retries on collision."""
+    while True:
+        new_id = generate_id(prefix)
+        if new_id not in existing:
+            return new_id

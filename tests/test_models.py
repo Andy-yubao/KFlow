@@ -83,3 +83,30 @@ class TestIndex:
         derivations = {"dv_x": IndexDerivation(summary="s", inputs=[], output={})}
         idx = Index(nodes=nodes, derivations=derivations)
         assert idx.nodes["nd_a"].name == "arch"
+
+
+class TestIdGeneration:
+    def test_generate_id_format(self):
+        from kflow.models import generate_id
+        id_str = generate_id("nd")
+        assert id_str.startswith("nd_")
+        assert len(id_str) == 9  # "nd_" + 6 hex chars
+
+    def test_generate_id_randomness(self):
+        from kflow.models import generate_id
+        ids = {generate_id("nd") for _ in range(100)}
+        assert len(ids) == 100  # all unique
+
+    def test_generate_unique_id_respects_existing(self):
+        from kflow.models import generate_unique_id
+        existing = {"nd_a1b2c3", "nd_d4e5f6"}
+        new_id = generate_unique_id("nd", existing)
+        assert new_id.startswith("nd_")
+        assert new_id not in existing
+
+    def test_generate_id_different_prefixes(self):
+        from kflow.models import generate_id
+        nd_id = generate_id("nd")
+        dv_id = generate_id("dv")
+        assert nd_id.startswith("nd_")
+        assert dv_id.startswith("dv_")

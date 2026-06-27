@@ -8,6 +8,9 @@ from kflow.commands.create import create_node
 from kflow.commands.list_cmd import list_nodes
 from kflow.commands.query import query_kflow
 from kflow.commands.derive import derive_node
+from kflow.commands.modify import modify_node
+from kflow.commands.confirm import confirm_node
+from kflow.commands.remove import remove_node
 from kflow.output import print_result, print_list
 
 
@@ -63,6 +66,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_derive.add_argument("--method-detail", dest="derive_method_detail")
     p_derive.add_argument("--summary", dest="derive_summary")
 
+    p_modify = sub.add_parser("modify", help="Mark node as modified, downstream goes yellow")
+    p_modify.add_argument("name", help="Node name")
+
+    p_confirm = sub.add_parser("confirm", help="Confirm node validity, optionally cascade")
+    p_confirm.add_argument("name")
+    p_confirm.add_argument("--cascade", action="store_true")
+
+    p_remove = sub.add_parser("remove", help="Remove a node")
+    p_remove.add_argument("name")
+    p_remove.add_argument("--force", action="store_true")
+    p_remove.add_argument("--keep-file", action="store_true")
+
     return parser
 
 
@@ -114,4 +129,14 @@ def dispatch(args):
                     "method_detail": args.derive_method_detail or ""},
             summary=args.derive_summary,
         )
+        print_result(result, json_output=getattr(args, 'json', False))
+    elif args.command == "modify":
+        result = modify_node(Path.cwd(), args.name)
+        print_result(result, json_output=getattr(args, 'json', False))
+    elif args.command == "confirm":
+        result = confirm_node(Path.cwd(), args.name, cascade=getattr(args, 'cascade', False))
+        print_result(result, json_output=getattr(args, 'json', False))
+    elif args.command == "remove":
+        result = remove_node(Path.cwd(), args.name, force=getattr(args, 'force', False),
+                             keep_file=getattr(args, 'keep_file', False))
         print_result(result, json_output=getattr(args, 'json', False))

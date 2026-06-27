@@ -7,7 +7,34 @@ from kflow.commands.init import init_project
 from kflow.commands.create import create_node
 from kflow.commands.list_cmd import list_nodes
 from kflow.commands.query import query_kflow
+from kflow.commands.derive import derive_node
 from kflow.output import print_result, print_list
+
+
+class DeriveInputAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        inputs = getattr(namespace, 'derive_inputs', []) or []
+        cur = getattr(namespace, '_derive_cur', None)
+        if cur:
+            inputs.append(cur)
+        namespace._derive_cur = {"node": values}
+        namespace.derive_inputs = inputs
+
+
+class DeriveRoleAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        cur = getattr(namespace, '_derive_cur', None)
+        if cur is None:
+            parser.error("--role must follow --input")
+        cur["role"] = values
+
+
+class DeriveRoleDetailAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        cur = getattr(namespace, '_derive_cur', None)
+        if cur is None:
+            parser.error("--role-detail must follow --input")
+        cur["role_detail"] = values
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_query = sub.add_parser("query", help="Search nodes and derivations")
     p_query.add_argument("word", help="Search term")
+
+    p_derive = sub.add_parser("derive", help="Create a derivation linking input nodes to output node")
+    p_derive.add_argument("--input", action=DeriveInputAction, dest="derive_inputs", default=[])
+    p_derive.add_argument("--role", action=DeriveRoleAction)
+    p_derive.add_argument("--role-detail", action=DeriveRoleDetailAction)
+    p_derive.add_argument("--output", dest="derive_output_name")
+    p_derive.add_argument("--method", dest="derive_method")
+    p_derive.add_argument("--method-detail", dest="derive_method_detail")
+    p_derive.add_argument("--summary", dest="derive_summary")
 
     return parser
 
@@ -67,3 +103,15 @@ def dispatch(args):
         result = query_kflow(Path.cwd(), args.word)
         from kflow.output import print_result as pr
         pr(result, json_output=getattr(args, 'json', False))
+    elif args.command == "derive":
+        cur = getattr(args, '_derive_cur', None)
+        if cur:
+            args.derive_inputs.append(cur)
+        result = derive_node(
+            Path.cwd(),
+            inputs=args.derive_inputs,
+            output={"name": args.derive_output_name, "method": args.derive_method,
+                    "method_detail": args.derive_method_detail or ""},
+            summary=args.derive_summary,
+        )
+        print_result(result, json_output=getattr(args, 'json', False))

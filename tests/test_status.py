@@ -1,4 +1,3 @@
-import pytest
 from kflow.status import propagate_yellow, propagate_red, propagate_green_cascade
 from kflow.models import Index, IndexNode, IndexDerivation
 

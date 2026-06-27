@@ -6,7 +6,7 @@ from kflow.commands.affect import affect_node
 
 def test_affect_leaf_node(tmp_path):
     init_project(tmp_path)
-    r = create_node(tmp_path, "leaf")
+    create_node(tmp_path, "leaf")
     result = affect_node(tmp_path, "leaf")
     assert len(result["nodes"]) == 1
     assert result["nodes"][0]["depth"] == 0

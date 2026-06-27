@@ -1,4 +1,5 @@
 """Core data models for KFlow — Node, Derivation, and Index."""
+import secrets
 from dataclasses import dataclass, field
 
 
@@ -62,8 +63,6 @@ class Index:
     nodes: dict[str, IndexNode]
     derivations: dict[str, IndexDerivation]
 
-
-import secrets
 
 
 def generate_id(prefix: str) -> str:

@@ -1,7 +1,6 @@
 """Shared fixtures for KFlow tests."""
 import json
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ from kflow.graph import would_create_cycle
 
 def derive_node(root: Path, inputs: list[dict], output: dict, summary: str) -> dict:
     """Create a derivation from input nodes to a new output node."""
-    kf = require_kflow(root)
+    require_kflow(root)
     index = load_index(root)
 
     # Resolve input node names to IDs

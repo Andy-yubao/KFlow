@@ -88,7 +88,6 @@ def test_derive_chain_extension(tmp_path):
 def test_would_create_cycle_detection(tmp_path):
     """Cycle check: adding an edge from a downstream node back to an upstream node."""
     from kflow.graph import would_create_cycle
-    from kflow.store import load_index
 
     init_project(tmp_path)
     create_node(tmp_path, "a")

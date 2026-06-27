@@ -1,6 +1,4 @@
-import json
 import pytest
-from pathlib import Path
 from kflow.store import load_index, load_node
 from kflow.commands.create import create_node
 from kflow.commands.init import init_project
@@ -39,6 +37,6 @@ def test_create_node_no_file(tmp_path):
 def test_create_node_existing_md_file(tmp_path):
     init_project(tmp_path)
     (tmp_path / "knowledge" / "existing.md").write_text("# Already here")
-    result = create_node(tmp_path, "existing")
+    create_node(tmp_path, "existing")
     content = (tmp_path / "knowledge" / "existing.md").read_text()
     assert content == "# Already here"

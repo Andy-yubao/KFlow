@@ -1,4 +1,3 @@
-import pytest
 from dataclasses import asdict
 from kflow.models import Node, InputSpec, OutputSpec, Derivation, IndexNode, IndexDerivation, Index
 

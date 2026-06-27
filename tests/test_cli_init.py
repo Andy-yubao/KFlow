@@ -1,6 +1,5 @@
 import json
 import pytest
-from pathlib import Path
 from kflow.commands.init import init_project
 from kflow.errors import ProjectAlreadyInitError
 

@@ -7,7 +7,7 @@ from kflow.errors import NodeExistsError
 
 def create_node(root: Path, name: str, no_file: bool = False) -> dict:
     """Create a new source node. Returns result dict with node info."""
-    kf = require_kflow(root)
+    require_kflow(root)
     index = load_index(root)
 
     for existing in index.nodes.values():

@@ -1,6 +1,5 @@
 import json
 import pytest
-from pathlib import Path
 from kflow.store import (
     load_index,
     save_index,
@@ -12,8 +11,7 @@ from kflow.store import (
     write_atomic,
     project_root_has_kflow,
 )
-from kflow.models import Index, Node, IndexNode, IndexDerivation, Derivation, InputSpec, OutputSpec
-from kflow.errors import ProjectNotInitError
+from kflow.models import Index, Node, IndexNode, Derivation, InputSpec, OutputSpec
 
 
 class TestProjectRootCheck:

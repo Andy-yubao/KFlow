@@ -17,7 +17,7 @@ def test_context_with_upstream(tmp_path):
     init_project(tmp_path)
     create_node(tmp_path, "a")
     create_node(tmp_path, "b")
-    r = derive_node(
+    _ = derive_node(
         tmp_path,
         inputs=[{"node": "a", "role": "r1", "role_detail": "d1"},
                 {"node": "b", "role": "r2", "role_detail": "d2"}],

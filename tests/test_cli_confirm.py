@@ -1,4 +1,3 @@
-import pytest
 from kflow.commands.init import init_project
 from kflow.commands.create import create_node
 from kflow.commands.derive import derive_node
@@ -32,7 +31,7 @@ def test_confirm_cascade(tmp_path):
         inputs=[{"node": "a", "role": "r", "role_detail": "rd"}],
         output={"name": "b", "method": "m", "method_detail": "md"}, summary="s2")
     modify_node(tmp_path, "source")
-    result = confirm_node(tmp_path, "source", cascade=True)
+    _ = confirm_node(tmp_path, "source", cascade=True)
     assert load_node(tmp_path, r1["node"]["id"]).status == "green"
     assert load_node(tmp_path, r2["node"]["id"]).status == "green"
 
@@ -49,5 +48,5 @@ def test_confirm_red_node(tmp_path):
     idx = load_index(tmp_path)
     idx.nodes[r["node"]["id"]].status = "red"
     save_index(tmp_path, idx)
-    result = confirm_node(tmp_path, "derived")
+    _ = confirm_node(tmp_path, "derived")
     assert load_node(tmp_path, r["node"]["id"]).status == "green"

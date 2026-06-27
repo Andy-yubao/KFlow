@@ -1,4 +1,3 @@
-import pytest
 from kflow.graph import bfs_upstream, bfs_downstream, has_cycle, would_create_cycle, toposort_nodes
 from kflow.models import Index, IndexNode, IndexDerivation
 

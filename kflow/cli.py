@@ -15,7 +15,7 @@ from kflow.commands.context import context_node
 from kflow.commands.affect import affect_node
 from kflow.commands.validate import validate_project
 from kflow.commands.reindex import reindex_project
-from kflow.output import print_result, print_list
+from kflow.output import print_result, print_list, print_context, print_affect, print_query, print_validate
 
 
 class DeriveInputAction(argparse.Action):
@@ -51,15 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_init = sub.add_parser("init", help="Initialize a KFlow project")
     p_init.add_argument("path", nargs="?", default=".", help="Project path (default: .)")
+    p_init.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_create = sub.add_parser("create", help="Create a source knowledge node")
     p_create.add_argument("name", help="Node name (corresponds to knowledge/<name>.md)")
     p_create.add_argument("--no-file", action="store_true", help="Create without a markdown file")
+    p_create.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_list = sub.add_parser("list", help="List all knowledge nodes")
+    p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_query = sub.add_parser("query", help="Search nodes and derivations")
     p_query.add_argument("word", help="Search term")
+    p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_derive = sub.add_parser("derive", help="Create a derivation linking input nodes to output node")
     p_derive.add_argument("--input", action=DeriveInputAction, dest="derive_inputs", default=[])
@@ -69,30 +73,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_derive.add_argument("--method", dest="derive_method")
     p_derive.add_argument("--method-detail", dest="derive_method_detail")
     p_derive.add_argument("--summary", dest="derive_summary")
+    p_derive.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_modify = sub.add_parser("modify", help="Mark node as modified, downstream goes yellow")
     p_modify.add_argument("name", help="Node name")
+    p_modify.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_confirm = sub.add_parser("confirm", help="Confirm node validity, optionally cascade")
     p_confirm.add_argument("name")
     p_confirm.add_argument("--cascade", action="store_true")
+    p_confirm.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_remove = sub.add_parser("remove", help="Remove a node")
     p_remove.add_argument("name")
     p_remove.add_argument("--force", action="store_true")
     p_remove.add_argument("--keep-file", action="store_true")
+    p_remove.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_context = sub.add_parser("context", help="Show upstream knowledge context")
     p_context.add_argument("name")
     p_context.add_argument("--depth", type=int, default=None)
+    p_context.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_affect = sub.add_parser("affect", help="Show downstream impact")
     p_affect.add_argument("name")
     p_affect.add_argument("--depth", type=int, default=None)
+    p_affect.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_validate = sub.add_parser("validate", help="Run integrity checks")
+    p_validate.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_reindex = sub.add_parser("reindex", help="Rebuild index.json from individual files")
+    p_reindex.add_argument("--json", action="store_true", help="Output as JSON")
 
     return parser
 
@@ -132,8 +144,7 @@ def dispatch(args):
         print_list(result, json_output=getattr(args, 'json', False))
     elif args.command == "query":
         result = query_kflow(Path.cwd(), args.word)
-        from kflow.output import print_result as pr
-        pr(result, json_output=getattr(args, 'json', False))
+        print_query(result, json_output=getattr(args, 'json', False))
     elif args.command == "derive":
         cur = getattr(args, '_derive_cur', None)
         if cur:
@@ -158,13 +169,13 @@ def dispatch(args):
         print_result(result, json_output=getattr(args, 'json', False))
     elif args.command == "context":
         result = context_node(Path.cwd(), args.name, depth=args.depth)
-        print_result(result, json_output=getattr(args, 'json', False))
+        print_context(result, json_output=getattr(args, 'json', False))
     elif args.command == "affect":
         result = affect_node(Path.cwd(), args.name, depth=args.depth)
-        print_result(result, json_output=getattr(args, 'json', False))
+        print_affect(result, json_output=getattr(args, 'json', False))
     elif args.command == "validate":
         result = validate_project(Path.cwd())
-        print_result(result, json_output=getattr(args, 'json', False))
+        print_validate(result, json_output=getattr(args, 'json', False))
     elif args.command == "reindex":
         result = reindex_project(Path.cwd())
         print_result(result, json_output=getattr(args, 'json', False))

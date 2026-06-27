@@ -1,0 +1,16 @@
+[project]
+name = "kflow"
+version = "0.1.0"
+description = "Knowledge Flow — DAG-based knowledge topology management CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.14"]
+
+[project.scripts]
+kflow = "kflow.cli:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

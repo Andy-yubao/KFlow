@@ -25,12 +25,11 @@ KFlow 不存储或向 Agent 返回文档正文，不是文档编辑器、通用�
 
 按以下顺序理解 v2：
 
-1. `KFlow_v2_重构启动指令.md`：产品边界和重构原则。
-2. `docs/KFlow_v2_领域模型与重构方案.md`：已批准的 v2 schema、状态算法和实施路线。
-3. `docs/KFlow_v2_首轮审查报告.md`：v1/v2 差异、迁移风险和决策记录。
-4. `README.md` 和 `docs/superpowers/`：v1 使用方式与历史设计。
-
-`docs/KFlow_v2_重构计划书.md` 是被启动指令取代的早期历史草案，不得以其中的章节级 Node、固定关系类型、event sourcing、正文 ContextBundle 等内容覆盖已批准方案。
+1. `docs/KFlow_核心原则.md`：产品使命、边界和设计决策过滤器。
+2. `docs/KFlow_v2_使用场景清单.md`：正式产品行为与验收基线。
+3. `docs/kflow_skills.md`：Agent 正确使用 KFlow 的黄金流程与边界。
+4. `docs/KFlow_v2_领域模型与重构方案.md`：当前 v2 schema、不变量、状态算法和实施边界。
+5. `README.md` 和 `docs/superpowers/`：v1 使用方式与历史设计，不得覆盖 v2 决策。
 
 ## Conda 与 Python 环境
 
@@ -64,7 +63,8 @@ Windows 沙箱中 pytest 的默认 `tmp_path` 可能因临时目录权限失败�
 - 使用小任务、小改动、测试先行和明确验收标准。
 - v2 代码继续放在独立命名空间，直到替换策略获批。
 - Knowledge Node 只管理一个或多个完整文件；不建立章节、段落或代码片段级 Node。
-- 每个 Node 恰好由一个 Derivation 产生；源 Node 使用零输入 Derivation。
+- Node 可以先独立存在；没有 producing Derivation 的 Node 自动视为源 Node。
+- Derivation 至少有一个输入；每个 Node 至多由一个 Derivation 产生。
 - confirm 只作用于一个 Node，绝不级联确认。
 - Node、Derivation、Confirmation 是 Git 跟踪的共享事实；缓存、锁和临时 observation 不是。
 - KFlow 不得创建、编辑、移动或删除用户正文。

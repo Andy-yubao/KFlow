@@ -101,10 +101,14 @@ class KnowledgeGraph:
     def derivations(self) -> Mapping[str, Derivation]:
         return self._derivations
 
-    def producer_of(self, node_id: str) -> Derivation:
-        return self._derivations[self._producers[node_id]]
+    def producer_of(self, node_id: str) -> Derivation | None:
+        """Return the producing Derivation, or ``None`` for a source Node."""
+        self._require_node(node_id)
+        producer_id = self._producers.get(node_id)
+        return self._derivations[producer_id] if producer_id is not None else None
 
     def consumer_derivations(self, node_id: str) -> tuple[Derivation, ...]:
+        self._require_node(node_id)
         return tuple(self._derivations[item] for item in self._consumers[node_id])
 
     def topological_order(self) -> tuple[str, ...]:
@@ -112,7 +116,11 @@ class KnowledgeGraph:
 
     def sibling_outputs(self, node_id: str) -> tuple[str, ...]:
         producer = self.producer_of(node_id)
-        return tuple(sorted(item.node for item in producer.outputs if item.node != node_id))
+        if producer is None:
+            return ()
+        return tuple(
+            sorted(item.node for item in producer.outputs if item.node != node_id)
+        )
 
     def downstream(self, node_id: str, max_depth: int | None = None) -> dict[str, int]:
         self._require_node(node_id)
@@ -220,15 +228,7 @@ def _collect_producers(
 
     result = {}
     for node_id, derivation_ids in sorted(producers.items()):
-        if not derivation_ids:
-            issues.append(
-                ValidationIssue(
-                    "missing_producer",
-                    f"node has no producing derivation: {node_id}",
-                    (node_id,),
-                )
-            )
-        elif len(derivation_ids) > 1:
+        if len(derivation_ids) > 1:
             issues.append(
                 ValidationIssue(
                     "multiple_producers",
@@ -236,7 +236,7 @@ def _collect_producers(
                     (node_id, *sorted(derivation_ids)),
                 )
             )
-        else:
+        elif derivation_ids:
             result[node_id] = derivation_ids[0]
     return result
 
@@ -272,7 +272,9 @@ def _project_adjacency(
     )
 
 
-def _stable_topological_order(adjacency: Mapping[str, tuple[str, ...]]) -> tuple[str, ...]:
+def _stable_topological_order(
+    adjacency: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
     in_degree = {node_id: 0 for node_id in adjacency}
     for neighbors in adjacency.values():
         for neighbor in neighbors:

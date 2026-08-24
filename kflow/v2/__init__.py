@@ -23,6 +23,19 @@ from kflow.v2.versioning import (
     fingerprint_file,
     fingerprint_files,
 )
+from kflow.v2.scan import ScanIssue, ScanResult, confirm, scan, validate
+from kflow.v2.status import NodeStatus, evaluate_statuses
+from kflow.v2.storage import (
+    SCHEMA_VERSION,
+    StorageError,
+    initialize_project,
+    load_confirmations,
+    load_graph,
+    save_confirmation,
+    save_derivation,
+    save_graph,
+    save_node,
+)
 
 __all__ = [
     "ConfirmationFile",
@@ -36,10 +49,26 @@ __all__ = [
     "KnowledgeGraph",
     "KnowledgeNode",
     "NodeConfirmation",
+    "NodeStatus",
+    "SCHEMA_VERSION",
+    "ScanIssue",
+    "ScanResult",
+    "StorageError",
     "ValidationIssue",
     "build_confirmation",
     "compute_effective_versions",
     "fingerprint_derivation",
     "fingerprint_file",
     "fingerprint_files",
+    "confirm",
+    "evaluate_statuses",
+    "initialize_project",
+    "load_confirmations",
+    "load_graph",
+    "save_confirmation",
+    "save_derivation",
+    "save_graph",
+    "save_node",
+    "scan",
+    "validate",
 ]

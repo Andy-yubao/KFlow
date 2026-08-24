@@ -1,7 +1,7 @@
 # KFlow v2 首个垂直切片实施计划
 
-> 状态：待恢复 v2 开发后执行。
-> 本计划只验证正式使用场景 Section A 的 Agent 黄金流程，不授权本轮开始实现。
+> 状态：进行中。领域内核、最小规范持久化、scan/status、单 Node confirm 与基础 CLI 已实现；impact/review_order 和完整 Agent 查询仍待后续阶段。
+> 本计划仍只约束正式使用场景 Section A 的 Agent 黄金流程；后续不得借此扩展迁移、UI、MCP 或 watcher。
 
 ## 1. 目标与停止点
 

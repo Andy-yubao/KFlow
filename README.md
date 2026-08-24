@@ -16,6 +16,31 @@ pipx install .
 uv tool install .
 ```
 
+## V2 最小闭环
+
+V2 与现有 V1 CLI 隔离，统一放在 `kflow v2` 命令组下。它只登记已有文件并维护元数据，不创建或改写用户正文。
+
+```bash
+# 项目中先由用户或 Agent 准备 docs/a.md 与 docs/b.md
+kflow v2 init
+kflow v2 add-node a --file docs/a.md
+kflow v2 add-node b --file docs/b.md
+
+# input/output 都引用已登记 Node；两端参数均可重复，保留多输入多输出语义
+kflow v2 derive \
+  --short "由 A 形成 B" \
+  --input a "使用 A" \
+  --output b "形成 B"
+
+kflow v2 status
+kflow v2 confirm a
+kflow v2 validate
+```
+
+`status` 的粗粒度结果为 `valid`（尚无确认基线）、`affected`（当前事实与基线不同）或 `confirmed`（与确认基线一致）；同时返回规范原因 `unconfirmed`、`files_changed`、`derivation_changed`、`input_changed`，避免把状态简化为不可解释的颜色。编辑真实文件后再次执行 `status` 即可计算自身变化与下游影响，confirmation 不参与版本计算，也不会级联确认。
+
+所有 V2 子命令均支持 `--json`，机器结果只包含路径、拓扑、状态和校验信息，不返回文件正文。
+
 ## 快速开始
 
 ```bash

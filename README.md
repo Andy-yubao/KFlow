@@ -1,14 +1,18 @@
 # KFlow — Knowledge Flow CLI
 
-面向 AI 与人的知识拓扑管理工具。不存储知识内容，而是维护知识之间的 DAG 关系，记录知识如何由已有知识推导而来。
+KFlow 是面向人类与 AI Agent 协同开发的知识拓扑和影响范围管理工具。它维护重要项目文件组成的 Knowledge Node、显式 Derivation、变化状态与确认基线，帮助使用者判断应该检查哪些文件以及为什么。
+
+KFlow 不保存或返回文档正文，也不会创建、编辑、移动或删除用户正文。
 
 ## 安装
+
+需要 Python 3.11 或更高版本。
 
 ```bash
 pip install -e .
 ```
 
-或通过 pipx/uv 安装：
+也可以通过 pipx 或 uv 安装：
 
 ```bash
 pipx install .
@@ -16,371 +20,154 @@ pipx install .
 uv tool install .
 ```
 
-## V2 最小闭环
+## 快速开始
 
-V2 与现有 V1 CLI 隔离，统一放在 `kflow v2` 命令组下。它只登记已有文件并维护元数据，不创建或改写用户正文。
+当前正式 CLI 已采用 schema v2 架构。`v2` 是内部实现版本，不是用户命令层级；用户直接调用 `kflow <command>`。
+
+先准备两个需要纳入 KFlow 的已有文件，例如 `docs/a.md` 和 `docs/b.md`，然后执行：
 
 ```bash
-# 项目中先由用户或 Agent 准备 docs/a.md 与 docs/b.md
-kflow v2 init
-kflow v2 add-node a --file docs/a.md
-kflow v2 add-node b --file docs/b.md
+kflow init
+kflow add-node a --file docs/a.md
+kflow add-node b --file docs/b.md
 
-# input/output 都引用已登记 Node；两端参数均可重复，保留多输入多输出语义
-kflow v2 derive \
+kflow derive \
   --short "由 A 形成 B" \
   --input a "使用 A" \
   --output b "形成 B"
 
-kflow v2 status
-kflow v2 confirm a
-kflow v2 validate
+kflow status
+kflow confirm a
+kflow confirm b
+kflow validate
 ```
 
-`status` 的粗粒度结果为 `valid`（尚无确认基线）、`affected`（当前事实与基线不同）或 `confirmed`（与确认基线一致）；同时返回规范原因 `unconfirmed`、`files_changed`、`derivation_changed`、`input_changed`，避免把状态简化为不可解释的颜色。编辑真实文件后再次执行 `status` 即可计算自身变化与下游影响，confirmation 不参与版本计算，也不会级联确认。
+Node 可以绑定多个完整文件，只需重复 `--file`。Derivation 支持多输入、多输出，只需重复 `--input` 或 `--output`。
 
-所有 V2 子命令均支持 `--json`，机器结果只包含路径、拓扑、状态和校验信息，不返回文件正文。
-
-## 快速开始
-
-```bash
-# 1. 初始化项目
-kflow init
-
-# 2. 创建知识节点
-kflow create architecture
-
-# 3. 从已有知识推导出新知识
-kflow derive \
-  --input architecture --role "提供系统框架" --role-detail "定义模块边界和数据流" \
-  --input requirements  --role "提供需求约束" --role-detail "功能与非功能需求列表" \
-  --output design --method "综合架构与需求形成设计方案" --method-detail "以架构为骨架..." \
-  --summary "从架构和需求推导设计方案"
-
-# 4. 查询知识拓扑
-kflow list                 # 平铺列出所有节点
-kflow context design       # 查看 design 的上游知识链
-kflow affect architecture  # 查看 architecture 影响的下游知识
-kflow query api            # 搜索包含 "api" 的知识
-
-# 5. 维护知识图谱
-kflow modify architecture  # 标记 architecture 已修改，下游自动变黄
-kflow confirm design       # 确认 design 仍成立，恢复绿色
-kflow remove requirements --force  # 删除节点，下游自动变红
-```
-
-## 核心概念
-
-### Node（知识节点）
-
-每个 Node 对应一个 `knowledge/<name>.md` 文件。KFlow 不修改 Markdown 内容，只维护节点之间的结构关系。
-
-节点有三种状态：
-
-| 状态 | 颜色 | 含义 |
-|------|------|------|
-| `green` | 🟢 | 知识完整，来源可靠 |
-| `yellow` | 🟡 | 上游被修改，可能不一致 |
-| `red` | 🔴 | 上游来源缺失，需要确认 |
-
-### Derivation（推导关系）
-
-记录已有知识如何**组合**形成新知识。每次推导是"多输入 → 单输出"：
-
-```
-architecture ─┐
-              ├─→ [推导: 设计方案] → design
-requirements ─┘
-```
-
-每个输入有角色（role）：描述该知识在推导中扮演的角色。
-输出有方法（method）：描述输出如何从输入组合生成。
-
-### DAG（有向无环图）
-
-整个项目是 Node + Derivation 组成的 DAG。源节点（无上游推导）代表从零开始的知识，其余节点都有且仅有一条产出它的 Derivation。
-
-### index.json
-
-`.kflow/index.json` 是聚合索引，每次写操作自动重写，供拓扑遍历和全局搜索使用。损坏时可通过 `kflow reindex` 从分文件重建。**不进 Git。**
-
-## 命令参考
-
-所有命令支持 `--json` 标志输出结构化 JSON，供 AI/MCP 消费。
+## 正式命令
 
 ### `kflow init [path]`
 
-初始化 KFlow 项目，创建 `.kflow/` 和 `knowledge/` 目录。
+初始化 schema v2 元数据目录。它不会扫描项目建立图谱，也不会创建用户正文。
 
 ```bash
 kflow init
 kflow init /path/to/project
 ```
 
-### `kflow create <name> [--no-file]`
+### `kflow add-node <name> --file <path>`
 
-创建源知识节点（无上游推导的节点）。自动创建 `knowledge/<name>.md`。
+把一个或多个已存在的项目相对路径登记为 Node。文件必须存在，且同一文件不能属于多个 Node。
 
 ```bash
-kflow create architecture
-kflow create pure-concept --no-file   # 不创建 .md 文件
+kflow add-node requirements --file docs/requirements.md
+kflow add-node architecture \
+  --file docs/architecture.md \
+  --file docs/architecture.svg
 ```
+
+没有 producing Derivation 的 Node 自动视为源 Node，孤立 Node 也是合法的。
 
 ### `kflow derive`
 
-从已有节点推导出新节点。支持命令行参数和交互式两种方式。
-
-**命令行模式：**
+用一个不可拆分的 Derivation 连接已有 Node。输入和输出至少各一个，每个输出 Node 至多有一个 producer，整个图必须保持无环。
 
 ```bash
 kflow derive \
-  --input <name> --role <短角色> --role-detail <详细描述> \
-  --output <name> --method <短方法> --method-detail <详细描述> \
-  --summary <一句话摘要>
+  --short "综合需求与约束形成设计" \
+  --detail "根据功能目标与部署限制确定系统设计。" \
+  --input requirements "提供功能目标" \
+  --input constraints "提供部署限制" \
+  --output architecture "形成系统架构" \
+  --output api-design "形成接口方案"
 ```
 
-`--input` 可重复多次。`--role` / `--role-detail` 与最近的 `--input` 配对。
+### `kflow status`
 
-**交互式模式（无参数时自动触发）：**
+只读扫描当前项目，计算 Node 状态、可解释的 review reasons 和独立的 validation issues。
 
 ```bash
-kflow derive
-# Output node name: factbase
-# Method (short): 依据模型组织实验数据
-# Method detail: ...
-# Input #1 name: architecture
-# Input #1 role: 提供预测框架
-# Input #1 role detail: ...
-# Add another input? [y/N]:
-# Summary: 构建事实库
+kflow status
+kflow status --json
 ```
 
-### `kflow modify <name>`
+粗粒度状态包括：
 
-标记节点内容已修改。目标节点自身变绿（表示修改后的内容已确认），所有下游节点传播为黄色（警告可能不一致）。
+- `valid`：尚无确认基线；
+- `affected`：当前事实与确认基线不同；
+- `confirmed`：当前事实与确认基线一致。
+
+规范原因包括 `unconfirmed`、`files_changed`、`derivation_changed` 和 `input_changed`。缺失文件、非法图或损坏的 schema 属于 validation issue，不会伪装成普通 review reason。
+
+### `kflow confirm <node>`
+
+确认一个已经实际检查过的 Node，记录它在当前文件、生产推导和直接输入条件下的版本基线。
 
 ```bash
-kflow modify architecture
-# architecture [green]
-#   Affected: design, api_spec, deployment_plan
+kflow confirm architecture
 ```
 
-### `kflow confirm <name> [--cascade]`
-
-确认节点知识仍然成立，恢复绿色。
-
-```bash
-kflow confirm design             # 仅确认 design
-kflow confirm architecture --cascade  # 确认 architecture 及整条下游链
-```
-
-> 红节点执行 `confirm` 表示"我手动验证过，即使来源缺失，此知识也成立"，节点直接变绿。
-
-### `kflow remove <name> [--force] [--keep-file]`
-
-删除节点。若有下游依赖则拒绝（除非 `--force`）。
-
-```bash
-kflow remove orphan              # 删除无下游的节点
-kflow remove architecture --force    # 强制删除，下游全部染红
-kflow remove draft --keep-file   # 删除节点但保留 .md 文件
-```
-
-### `kflow context <name> [--depth N]`
-
-向上游追溯知识上下文，按拓扑序展示从源节点到目标节点的完整推导链。
-
-```bash
-kflow context factbase
-# ## Context for: factbase
-#
-# ### architecture 🟢  knowledge/architecture.md
-# 来源: (source node)
-#
-# ### experiment 🟢  knowledge/experiment.md
-# 来源: (source node)
-#
-# ### factbase 🟢  knowledge/factbase.md
-# 来源: 构建事实库 — 由 architecture(预测框架)、experiment(参数) 组合生成
-
-kflow context factbase --depth 1  # 仅一层上游
-```
-
-### `kflow affect <name> [--depth N]`
-
-向下游追踪影响范围，树形展示被目标节点影响的全部下游知识。
-
-```bash
-kflow affect architecture
-# architecture 🟢
-#   → design 🟢
-#   → api_spec 🟡
-#     → implementation 🟡
-#     → tests 🟡
-```
-
-### `kflow query <word>`
-
-在节点名、推导摘要、输入角色、输出方法中全文搜索。
-
-```bash
-kflow query api
-# ## Nodes (2)
-#   api_spec     knowledge/api_spec.md     [green] 🟢
-#   api_client   knowledge/api_client.md   [yellow] 🟡
-# ## Derivations (1)
-#   生成 API 规范 (dv_a1b2c3)
-#     architecture, requirements → api_spec
-```
-
-### `kflow list`
-
-平铺列出所有节点。
-
-```bash
-kflow list
-# architecture  [green]  🟢  knowledge/architecture.md
-# api_spec      [yellow] 🟡  knowledge/api_spec.md
-# experiment    [green]  🟢  knowledge/experiment.md
-```
+一次只确认一个 Node，不会级联确认 sibling outputs 或下游，也不代表 KFlow 证明正文绝对正确。
 
 ### `kflow validate`
 
-运行 6 项完整性检查，只报告不修复：
-
-| # | 检查项 | 严重度 |
-|---|--------|--------|
-| 1 | 孤立节点（无输入也无输出） | warning |
-| 2 | 悬挂引用（节点与 Derivation 间引用断裂） | error |
-| 3 | 循环引用（DAG 中出现环） | error |
-| 4 | index.json 与分文件不一致 | error |
-| 5 | file 指向的 .md 不存在 | error |
-| 6 | knowledge/ 下存在未注册的 .md | warning |
+校验 schema v2 元数据、文件引用和图不变量，只报告问题，不修改用户正文。
 
 ```bash
 kflow validate
-# ✓ All checks passed.
+kflow validate --json
 ```
 
-### `kflow reindex`
+所有正式命令都支持 `--json`，机器结果只包含路径、拓扑、状态和校验信息，不包含正文、片段、自动摘要或拼装 Prompt。
 
-从 `nodes/` 和 `derivations/` 下的分文件重建 `index.json`。
+## 旧 v1 命令
+
+旧实现仍保留为行为基线，但不再是默认接口。需要显式使用 legacy 命令组：
 
 ```bash
-kflow reindex
-# Reindexed: 5 nodes, 3 derivations
+kflow legacy --help
+kflow legacy init
+kflow legacy create architecture
 ```
 
-## 典型工作流
+KFlow 不会自动迁移或转换旧 v1 项目。请不要在同一项目中混用正式 schema v2 命令和 legacy 命令。
 
-### 场景：AI 辅助的渐进式知识构建
+## 元数据结构
+
+正式 CLI 使用 Git-native 的 schema v2 事实：
+
+```text
+.kflow/
+├── project.json
+├── .gitignore
+├── nodes/
+├── derivations/
+├── confirmations/
+├── cache/          # 可重建，不进 Git
+└── runtime/        # 临时数据，不进 Git
+```
+
+Node、Derivation 和 Confirmation 应由 Git 跟踪；cache、runtime 与其他可重建数据不进入 Git。
+
+内部领域代码继续位于 `kflow/v2/`。这个目录名用于隔离领域实现和 schema 版本，不构成用户可见的 CLI 层级。
+
+## 设计边界
+
+- Node 只管理一个或多个完整文件，不管理目录、章节、段落或代码片段。
+- KFlow 只维护显式 Derivation，不根据正文、文件名或主题相似性自动猜测关系。
+- KFlow 只提示哪些位置可能受影响，不判断正文真伪，也不自动修改下游。
+- Confirmation 是版本检查基线，不是审批、真伪证明或永久绿色状态。
+- Git 管理正文和历史，编辑器或 Agent 负责读取与修改，KFlow 负责知识拓扑和影响范围。
+
+## 开发
 
 ```bash
-# Session 1: AI 理解需求，创建初始知识节点
-kflow init
-kflow create requirements      # 创建需求文档
-kflow create constraints        # 创建约束条件
-
-# Session 2: AI 推导设计方案
-kflow derive \
-  --input requirements --role "功能需求" --role-detail "..." \
-  --input constraints   --role "设计约束" --role-detail "..." \
-  --output system-design --method "权衡需求与约束" --method-detail "..." \
-  --summary "从需求与约束推导系统设计"
-
-# Session 3: AI 修改需求，触发影响分析
-kflow modify requirements
-kflow affect requirements       # 查看哪些知识受影响（变黄）
-kflow context api-spec --json    # AI 获取需要复查的上下文
-
-# Session 4: AI 逐项确认受影响的知识
-kflow confirm system-design
-kflow confirm api-spec --cascade
-kflow validate
+pytest -q
+ruff check .
+ruff format --check .
 ```
 
-### 场景：手动维护知识图谱
-
-```bash
-# 创建知识
-kflow create research-paper
-
-# 记录推导过程
-kflow derive \
-  --input research-paper --role "理论基础" --role-detail "..." \
-  --input experiment    --role "实验验证" --role-detail "..." \
-  --output conclusion --method "综合理论与实验" --method-detail "..." \
-  --summary "论文结论推导"
-
-# 论文修改后
-kflow modify research-paper     # 下游变黄
-
-# 检查影响
-kflow affect research-paper
-
-# 确认结论仍成立
-kflow confirm conclusion
-```
-
-## JSON 输出（供 AI/MCP 消费）
-
-所有命令支持 `--json` 标志。错误走 stderr + 非零退出码，成功走 stdout。
-
-```bash
-kflow context factbase --json
-```
-
-```json
-{
-  "target": "nd_m3n4o5",
-  "nodes": [
-    {
-      "id": "nd_a1b2c3",
-      "name": "architecture",
-      "status": "green",
-      "file": "knowledge/architecture.md",
-      "source": null
-    },
-    {
-      "id": "nd_m3n4o5",
-      "name": "factbase",
-      "status": "green",
-      "file": "knowledge/factbase.md",
-      "source": {
-        "derivation_id": "dv_d4e5f6",
-        "summary": "构建事实库",
-        "inputs": [
-          {"node": "nd_a1b2c3", "role": "提供预测框架"},
-          {"node": "nd_x1y2z3", "role": "提供参数"}
-        ]
-      }
-    }
-  ]
-}
-```
-
-## 目录结构
-
-```
-项目根目录/
-├── .kflow/                    # 元数据（不进 Git）
-│   ├── index.json             # 聚合索引
-│   ├── nodes/
-│   │   └── nd_xxxxxx.json     # 每个节点独立存储
-│   └── derivations/
-│       └── dv_xxxxxx.json     # 每个 Derivation 独立存储
-├── knowledge/                 # Markdown 文件（进 Git）
-│   ├── architecture.md
-│   ├── experiment.md
-│   └── ...
-└── ...
-```
-
-## 技术栈
-
-- Python 3.11+
-- 零外部依赖（标准库优先）
-- 命令风格：Git 式平铺
+项目当前零第三方运行时依赖；pytest 与 Ruff 仅用于开发。
 
 ## 许可证
 

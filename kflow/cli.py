@@ -64,29 +64,65 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     sub = parser.add_subparsers(dest="command")
 
-    p_init = sub.add_parser("init", help="Initialize a KFlow project")
+    p_init = sub.add_parser("init", help="Initialize KFlow metadata")
     p_init.add_argument(
         "path", nargs="?", default=".", help="Project path (default: .)"
     )
     p_init.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_create = sub.add_parser("create", help="Create a source knowledge node")
+    p_add = sub.add_parser("add-node", help="Register existing files as a Node")
+    p_add.add_argument("name")
+    p_add.add_argument("--file", action="append", required=True, dest="files")
+    p_add.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_derive = sub.add_parser("derive", help="Connect existing Nodes")
+    p_derive.add_argument("--short", required=True)
+    p_derive.add_argument("--detail", default="")
+    p_derive.add_argument(
+        "--input", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
+    )
+    p_derive.add_argument(
+        "--output", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
+    )
+    p_derive.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_status = sub.add_parser("status", help="Scan current impact status")
+    p_status.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_confirm = sub.add_parser("confirm", help="Confirm exactly one Node")
+    p_confirm.add_argument("node")
+    p_confirm.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_validate = sub.add_parser("validate", help="Validate KFlow facts")
+    p_validate.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_legacy = sub.add_parser("legacy", help="Use the legacy v1 command interface")
+    legacy_sub = p_legacy.add_subparsers(dest="legacy_command", required=True)
+    _add_legacy_parsers(legacy_sub)
+
+    return parser
+
+
+def _add_legacy_parsers(sub) -> None:
+    p_init = sub.add_parser("init", help="[legacy] Initialize a v1 project")
+    p_init.add_argument("path", nargs="?", default=".")
+    p_init.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_create = sub.add_parser("create", help="[legacy] Create a source node")
     p_create.add_argument("name", help="Node name (corresponds to knowledge/<name>.md)")
     p_create.add_argument(
         "--no-file", action="store_true", help="Create without a markdown file"
     )
     p_create.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_list = sub.add_parser("list", help="List all knowledge nodes")
+    p_list = sub.add_parser("list", help="[legacy] List all nodes")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_query = sub.add_parser("query", help="Search nodes and derivations")
+    p_query = sub.add_parser("query", help="[legacy] Search nodes and derivations")
     p_query.add_argument("word", help="Search term")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_derive = sub.add_parser(
-        "derive", help="Create a derivation linking input nodes to output node"
-    )
+    p_derive = sub.add_parser("derive", help="[legacy] Create a v1 derivation")
     p_derive.add_argument(
         "--input", action=DeriveInputAction, dest="derive_inputs", default=[]
     )
@@ -98,77 +134,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_derive.add_argument("--summary", dest="derive_summary")
     p_derive.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_modify = sub.add_parser(
-        "modify", help="Mark node as modified, downstream goes yellow"
-    )
+    p_modify = sub.add_parser("modify", help="[legacy] Mark a node as modified")
     p_modify.add_argument("name", help="Node name")
     p_modify.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_confirm = sub.add_parser(
-        "confirm", help="Confirm node validity, optionally cascade"
-    )
+    p_confirm = sub.add_parser("confirm", help="[legacy] Confirm a v1 node")
     p_confirm.add_argument("name")
     p_confirm.add_argument("--cascade", action="store_true")
     p_confirm.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_remove = sub.add_parser("remove", help="Remove a node")
+    p_remove = sub.add_parser("remove", help="[legacy] Remove a node")
     p_remove.add_argument("name")
     p_remove.add_argument("--force", action="store_true")
     p_remove.add_argument("--keep-file", action="store_true")
     p_remove.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_context = sub.add_parser("context", help="Show upstream knowledge context")
+    p_context = sub.add_parser("context", help="[legacy] Show upstream context")
     p_context.add_argument("name")
     p_context.add_argument("--depth", type=int, default=None)
     p_context.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_affect = sub.add_parser("affect", help="Show downstream impact")
+    p_affect = sub.add_parser("affect", help="[legacy] Show downstream impact")
     p_affect.add_argument("name")
     p_affect.add_argument("--depth", type=int, default=None)
     p_affect.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_validate = sub.add_parser("validate", help="Run integrity checks")
+    p_validate = sub.add_parser("validate", help="[legacy] Run v1 integrity checks")
     p_validate.add_argument("--json", action="store_true", help="Output as JSON")
 
-    p_reindex = sub.add_parser(
-        "reindex", help="Rebuild index.json from individual files"
-    )
+    p_reindex = sub.add_parser("reindex", help="[legacy] Rebuild the v1 index")
     p_reindex.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2 = sub.add_parser("v2", help="Use the isolated KFlow v2 workflow")
-    v2_sub = p_v2.add_subparsers(dest="v2_command", required=True)
-
-    p_v2_init = v2_sub.add_parser("init", help="Initialize schema-v2 metadata")
-    p_v2_init.add_argument("path", nargs="?", default=".")
-    p_v2_init.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2_add = v2_sub.add_parser("add-node", help="Register existing files")
-    p_v2_add.add_argument("name")
-    p_v2_add.add_argument("--file", action="append", required=True, dest="files")
-    p_v2_add.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2_derive = v2_sub.add_parser("derive", help="Connect existing v2 Nodes")
-    p_v2_derive.add_argument("--short", required=True)
-    p_v2_derive.add_argument("--detail", default="")
-    p_v2_derive.add_argument(
-        "--input", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
-    )
-    p_v2_derive.add_argument(
-        "--output", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
-    )
-    p_v2_derive.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2_status = v2_sub.add_parser("status", help="Scan v2 impact status")
-    p_v2_status.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2_confirm = v2_sub.add_parser("confirm", help="Confirm exactly one v2 Node")
-    p_v2_confirm.add_argument("node")
-    p_v2_confirm.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_v2_validate = v2_sub.add_parser("validate", help="Validate schema-v2 facts")
-    p_v2_validate.add_argument("--json", action="store_true", help="Output as JSON")
-
-    return parser
 
 
 def main(argv=None):
@@ -197,22 +192,28 @@ def main(argv=None):
 
 def dispatch(args):
     """Route to the appropriate command handler."""
-    if args.command == "v2":
-        dispatch_v2(args)
-    elif args.command == "init":
+    if args.command == "legacy":
+        dispatch_legacy(args)
+    else:
+        dispatch_current(args)
+
+
+def dispatch_legacy(args):
+    """Route explicitly requested legacy v1 commands."""
+    if args.legacy_command == "init":
         path = Path(args.path).resolve()
         init_project(path)
         print(f"Initialized KFlow project at {path}")
-    elif args.command == "create":
+    elif args.legacy_command == "create":
         result = create_node(Path.cwd(), args.name, no_file=args.no_file)
         print_result(result, json_output=getattr(args, "json", False))
-    elif args.command == "list":
+    elif args.legacy_command == "list":
         result = list_nodes(Path.cwd())
         print_list(result, json_output=getattr(args, "json", False))
-    elif args.command == "query":
+    elif args.legacy_command == "query":
         result = query_kflow(Path.cwd(), args.word)
         print_query(result, json_output=getattr(args, "json", False))
-    elif args.command == "derive":
+    elif args.legacy_command == "derive":
         cur = getattr(args, "_derive_cur", None)
         if cur:
             args.derive_inputs.append(cur)
@@ -227,15 +228,15 @@ def dispatch(args):
             summary=args.derive_summary,
         )
         print_result(result, json_output=getattr(args, "json", False))
-    elif args.command == "modify":
+    elif args.legacy_command == "modify":
         result = modify_node(Path.cwd(), args.name)
         print_result(result, json_output=getattr(args, "json", False))
-    elif args.command == "confirm":
+    elif args.legacy_command == "confirm":
         result = confirm_node(
             Path.cwd(), args.name, cascade=getattr(args, "cascade", False)
         )
         print_result(result, json_output=getattr(args, "json", False))
-    elif args.command == "remove":
+    elif args.legacy_command == "remove":
         result = remove_node(
             Path.cwd(),
             args.name,
@@ -243,27 +244,30 @@ def dispatch(args):
             keep_file=getattr(args, "keep_file", False),
         )
         print_result(result, json_output=getattr(args, "json", False))
-    elif args.command == "context":
+    elif args.legacy_command == "context":
         result = context_node(Path.cwd(), args.name, depth=args.depth)
         print_context(result, json_output=getattr(args, "json", False))
-    elif args.command == "affect":
+    elif args.legacy_command == "affect":
         result = affect_node(Path.cwd(), args.name, depth=args.depth)
         print_affect(result, json_output=getattr(args, "json", False))
-    elif args.command == "validate":
+    elif args.legacy_command == "validate":
         result = validate_project(Path.cwd())
         print_validate(result, json_output=getattr(args, "json", False))
-    elif args.command == "reindex":
+    elif args.legacy_command == "reindex":
         result = reindex_project(Path.cwd())
         print_result(result, json_output=getattr(args, "json", False))
+    else:
+        raise ValueError(f"unknown legacy command: {args.legacy_command}")
 
 
-def dispatch_v2(args):
+def dispatch_current(args):
+    """Route the default schema-v2 command interface."""
     root = Path.cwd()
-    if args.v2_command == "init":
+    if args.command == "init":
         root = Path(args.path).resolve()
         initialize_v2_project(root)
         result = {"ok": True, "schema_version": 2, "root": str(root)}
-    elif args.v2_command == "add-node":
+    elif args.command == "add-node":
         node = add_v2_node(root, args.name, tuple(args.files))
         result = {
             "ok": True,
@@ -274,7 +278,7 @@ def dispatch_v2(args):
                 "files": list(node.files),
             },
         }
-    elif args.v2_command == "derive":
+    elif args.command == "derive":
         derivation = add_v2_derivation(
             root,
             args.short,
@@ -291,9 +295,9 @@ def dispatch_v2(args):
                 "outputs": [node for node, _short in args.output],
             },
         }
-    elif args.v2_command == "status":
+    elif args.command == "status":
         result = _v2_status_result(root)
-    elif args.v2_command == "confirm":
+    elif args.command == "confirm":
         before, after = confirm_v2_node(root, args.node)
         current = _v2_status_result(root)
         result = {
@@ -306,7 +310,7 @@ def dispatch_v2(args):
                 item["id"] for item in current["nodes"] if item["reasons"]
             ],
         }
-    elif args.v2_command == "validate":
+    elif args.command == "validate":
         issues = validate_v2_project(root)
         result = {
             "ok": not issues,
@@ -321,7 +325,7 @@ def dispatch_v2(args):
             ],
         }
     else:
-        raise ValueError(f"unknown v2 command: {args.v2_command}")
+        raise ValueError(f"unknown command: {args.command}")
     _print_v2(result, getattr(args, "json", False))
 
 

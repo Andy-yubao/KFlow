@@ -110,7 +110,7 @@ def _require_project(root: Path) -> Path:
     metadata = Path(root) / KFLOW_DIR
     manifest_path = metadata / "project.json"
     if not manifest_path.is_file():
-        raise StorageError(f"KFlow v2 project is not initialized: {Path(root)}")
+        raise StorageError(f"KFlow project is not initialized: {Path(root)}")
     manifest = _read_json(manifest_path)
     _expect_header(manifest, "kflow-project")
     return metadata

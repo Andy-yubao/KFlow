@@ -1,14 +1,18 @@
 import json
 
-from kflow.cli import main
+import pytest
+
+from kflow.cli import build_parser, main
 
 
 def run_cli(capsys, *arguments):
-    main(["v2", *arguments, "--json"])
+    main([*arguments, "--json"])
     return json.loads(capsys.readouterr().out)
 
 
-def test_v2_cli_runs_core_workflow_without_domain_api(tmp_path, monkeypatch, capsys):
+def test_default_cli_runs_v2_core_workflow_without_domain_api(
+    tmp_path, monkeypatch, capsys
+):
     monkeypatch.chdir(tmp_path)
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -55,3 +59,15 @@ def test_v2_cli_runs_core_workflow_without_domain_api(tmp_path, monkeypatch, cap
     invalid = run_cli(capsys, "validate")
     assert invalid["ok"] is False
     assert invalid["issues"][0]["code"] == "missing_file"
+
+
+def test_cli_does_not_expose_v2_command_group(capsys):
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["v2", "init"])
+
+    assert (
+        "{init,add-node,derive,status,confirm,validate,legacy}"
+        in capsys.readouterr().err
+    )

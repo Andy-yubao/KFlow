@@ -6,7 +6,7 @@
 >
 > 行为验收：`KFlow_v2_使用场景清单.md`。
 >
-> 实现状态：领域内核已按本文修正，并已实现 schema v2 最小持久化、scan/status、单 Node confirm 与隔离的 `kflow v2` 基础命令组。impact/review_order、完整查询与事务恢复仍待后续阶段。
+> 实现状态：领域内核已按本文修正，并已实现 schema v2 最小持久化、scan/status、单 Node confirm 与正式顶层 CLI 最小闭环。`v2` 继续作为内部模块与 schema 版本，不再是用户命令层级；impact/review_order、完整查询与事务恢复仍待后续阶段。
 
 ## 1. 定位与边界
 

@@ -17,8 +17,9 @@ KFlow 不存储或向 Agent 返回文档正文，不是文档编辑器、通用�
 ## 当前代码状态
 
 - `kflow/` 中的原有模块是可运行的 v1 CLI，保留为行为基线。
-- `kflow/v2/` 是与 v1 隔离的 v2 实现，已包含领域模型、图不变量、有效版本、schema v2 持久化、scan/status 和单 Node confirm。
-- CLI 通过独立的 `kflow v2` 命令组提供 init、add-node、derive、status、confirm 和 validate 最小闭环；原有顶层命令仍是 v1 行为基线。
+- `kflow/v2/` 是与 v1 隔离的正式领域实现，已包含领域模型、图不变量、有效版本、schema v2 持久化、scan/status 和单 Node confirm。
+- 正式 CLI 直接提供 `kflow init`、`kflow add-node`、`kflow derive`、`kflow status`、`kflow confirm` 和 `kflow validate` 最小闭环；`v2` 只表示内部实现与 schema 版本，不是用户命令层级。
+- 原有 v1 CLI 保留为行为基线，并通过显式的 `kflow legacy` 命令组访问；当前不提供自动数据迁移。
 - v2 当前阶段仅授权上述最小闭环。除非用户明确要求，不要继续扩展迁移器、Web UI、MCP、watcher 或自动关系推断。
 - 不要为了兼容 v1 而改变已批准的 v2 领域模型，也不要在没有明确授权时删除 v1。
 
@@ -62,7 +63,7 @@ Windows 沙箱中 pytest 的默认 `tmp_path` 可能因临时目录权限失败�
 
 - 修改前先检查工作树，保留用户已有改动。
 - 使用小任务、小改动、测试先行和明确验收标准。
-- v2 代码继续放在独立命名空间，直到替换策略获批。
+- 正式领域代码继续放在 `kflow/v2/` 独立命名空间；不要因用户侧命令已提升到顶层而移动内部模块。
 - Knowledge Node 只管理一个或多个完整文件；不建立章节、段落或代码片段级 Node。
 - Node 可以先独立存在；没有 producing Derivation 的 Node 自动视为源 Node。
 - Derivation 至少有一个输入；每个 Node 至多由一个 Derivation 产生。

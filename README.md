@@ -137,7 +137,10 @@ kflow context --affected --json
 `context` 与 `explain` 的 JSON 统一使用 `node`、`status`、`reasons`、
 `relations`、`impact`、`review_order` 和 `issues` 顶层字段。
 
-完整的 Agent 修改、影响检查与逐 Node 确认示例见 [`docs/agent-workflow.md`](docs/agent-workflow.md)。
+完整的 Agent 修改、影响检查与逐 Node 确认示例见
+[`docs/agent-workflow.md`](docs/agent-workflow.md)；适配边界与机器协议分别见
+[`docs/agent-integration.md`](docs/agent-integration.md) 和
+[`docs/schema.md`](docs/schema.md)。
 
 ### `kflow explain <node>`
 

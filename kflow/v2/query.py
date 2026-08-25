@@ -5,14 +5,109 @@ from __future__ import annotations
 import heapq
 from collections import deque
 from pathlib import Path
+from typing import Final, TypedDict
 
 from kflow.v2.graph import GraphValidationError, KnowledgeGraph
 from kflow.v2.models import Derivation
 from kflow.v2.scan import ScanIssue, ScanResult, resolve_node_id, scan
-from kflow.v2.storage import StorageError
+from kflow.v2.storage import SCHEMA_VERSION, StorageError
 
 
-QUERY_SCHEMA_FIELDS = frozenset(
+class QueryIssue(TypedDict):
+    """One machine-readable query or validation problem."""
+
+    code: str
+    message: str
+    references: list[str]
+
+
+class NodeIdentity(TypedDict):
+    """Stable Node identity exposed by the query API."""
+
+    id: str
+    name: str
+    files: list[str]
+
+
+class NodeResult(NodeIdentity):
+    """A queried Node plus changed paths detected by the current scan."""
+
+    changed_files: list[str]
+
+
+class StatusNode(NodeResult):
+    """A Node annotated with its current review state."""
+
+    status: str | None
+    reasons: list[str]
+
+
+class ImpactPath(TypedDict):
+    """One explicit downstream path from a change root."""
+
+    root: str
+    nodes: list[str]
+    derivations: list[str]
+
+
+class AffectedNode(StatusNode):
+    """A downstream Node annotated with impact provenance."""
+
+    depth: int
+    roots: list[str]
+    impact_reason: str
+    paths: list[ImpactPath]
+
+
+class DerivationRole(TypedDict):
+    """One input or output role in an exposed Derivation."""
+
+    node: str
+    name: str
+    short: str
+    detail: str
+
+
+class DerivationResult(TypedDict):
+    """Explicit Derivation facts safe for Agent consumption."""
+
+    id: str
+    short: str
+    detail: str
+    inputs: list[DerivationRole]
+    outputs: list[DerivationRole]
+
+
+class RelationsResult(TypedDict):
+    """Topology related to the query target."""
+
+    upstream: list[NodeIdentity]
+    downstream: list[NodeIdentity]
+    derivations: list[DerivationResult]
+
+
+class ImpactResult(TypedDict):
+    """Change roots and the downstream Nodes they may affect."""
+
+    changed_nodes: list[StatusNode]
+    affected_nodes: list[AffectedNode]
+
+
+class QueryResult(TypedDict):
+    """Frozen schema-v2 result shared by all public query functions."""
+
+    ok: bool
+    schema_version: int
+    node: NodeResult | None
+    status: str | None
+    reasons: list[str]
+    relations: RelationsResult
+    impact: ImpactResult
+    review_order: list[str]
+    issues: list[QueryIssue]
+
+
+QUERY_SCHEMA_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "ok",
         "schema_version",
@@ -26,9 +121,22 @@ QUERY_SCHEMA_FIELDS = frozenset(
     }
 )
 
+__all__ = [
+    "QUERY_SCHEMA_FIELDS",
+    "QueryResult",
+    "query_affected_context",
+    "query_context",
+    "query_impact",
+]
 
-def query_context(root: Path, node_reference: str) -> dict:
-    """Return one Node's status and relevant topology without file contents."""
+
+def query_context(root: Path, node_reference: str) -> QueryResult:
+    """Return one Node's stable status and topology contract.
+
+    ``node_reference`` accepts a stable Node ID or unique Node name. Failures
+    are returned in the same :class:`QueryResult` shape with ``ok=False``;
+    registered file contents are never included.
+    """
     try:
         scanned = scan(root)
         graph = scanned.graph
@@ -73,8 +181,13 @@ def query_context(root: Path, node_reference: str) -> dict:
     )
 
 
-def query_affected_context(root: Path) -> dict:
-    """Return the current project change roots and their affected review scope."""
+def query_affected_context(root: Path) -> QueryResult:
+    """Return current change roots and the remaining affected review scope.
+
+    A valid project with no active change roots returns a successful, empty
+    result. Invalid or uninitialized projects retain the same result shape and
+    report a machine-readable issue.
+    """
     try:
         scanned = scan(root)
     except (
@@ -137,11 +250,12 @@ def query_affected_context(root: Path) -> dict:
     )
 
 
-def query_impact(root: Path, node_reference: str | None = None) -> dict:
+def query_impact(root: Path, node_reference: str | None = None) -> QueryResult:
     """Explain explicit or currently detected downstream impact.
 
     When ``node_reference`` is omitted, file and producing-Derivation changes are
-    used as roots. An explicit Node is always traversed, regardless of status.
+    used as roots. An explicit Node ID or name is always traversed, regardless
+    of status. Errors use the same stable :class:`QueryResult` envelope.
     """
     try:
         scanned = scan(root)
@@ -203,18 +317,18 @@ def query_impact(root: Path, node_reference: str | None = None) -> dict:
 def _query_result(
     scanned: ScanResult,
     *,
-    node: dict | None,
+    node: NodeResult | None,
     status: str | None,
     reasons: list[str],
-    upstream: list[dict],
-    downstream: list[dict],
-    derivations: list[dict],
-    impact: dict,
+    upstream: list[NodeIdentity],
+    downstream: list[NodeIdentity],
+    derivations: list[DerivationResult],
+    impact: ImpactResult,
     review_order: list[str],
-) -> dict:
-    result = {
+) -> QueryResult:
+    result: QueryResult = {
         "ok": not scanned.issues,
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "node": node,
         "status": status,
         "reasons": reasons,
@@ -234,9 +348,9 @@ def _query_result(
     return result
 
 
-def _error_result(error: Exception, reference: str | None) -> dict:
+def _error_result(error: Exception, reference: str | None) -> QueryResult:
     if isinstance(error, GraphValidationError):
-        issues = [
+        issues: list[QueryIssue] = [
             {
                 "code": issue.code,
                 "message": issue.message,
@@ -255,7 +369,7 @@ def _error_result(error: Exception, reference: str | None) -> dict:
         ]
     return {
         "ok": False,
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "node": None,
         "status": "error",
         "reasons": [],
@@ -420,12 +534,12 @@ def _needs_review(scanned: ScanResult, node_id: str) -> bool:
     return status is not None and status.needs_review
 
 
-def _node_identity(graph: KnowledgeGraph, node_id: str) -> dict:
+def _node_identity(graph: KnowledgeGraph, node_id: str) -> NodeIdentity:
     node = graph.nodes[node_id]
     return {"id": node.id, "name": node.name, "files": list(node.files)}
 
 
-def _node_result(scanned: ScanResult, node_id: str) -> dict:
+def _node_result(scanned: ScanResult, node_id: str) -> NodeResult:
     status = scanned.statuses.get(node_id)
     return {
         **_node_identity(scanned.graph, node_id),
@@ -433,7 +547,7 @@ def _node_result(scanned: ScanResult, node_id: str) -> dict:
     }
 
 
-def _status_node(scanned: ScanResult, node_id: str) -> dict:
+def _status_node(scanned: ScanResult, node_id: str) -> StatusNode:
     status = scanned.statuses.get(node_id)
     return {
         **_node_result(scanned, node_id),
@@ -442,7 +556,9 @@ def _status_node(scanned: ScanResult, node_id: str) -> dict:
     }
 
 
-def _derivation_result(graph: KnowledgeGraph, derivation: Derivation) -> dict:
+def _derivation_result(
+    graph: KnowledgeGraph, derivation: Derivation
+) -> DerivationResult:
     return {
         "id": derivation.id,
         "short": derivation.short,
@@ -468,7 +584,7 @@ def _derivation_result(graph: KnowledgeGraph, derivation: Derivation) -> dict:
     }
 
 
-def _issue_result(issue: ScanIssue) -> dict:
+def _issue_result(issue: ScanIssue) -> QueryIssue:
     return {
         "code": issue.code,
         "message": issue.message,

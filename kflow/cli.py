@@ -27,9 +27,7 @@ from kflow.output import (
 )
 from kflow.v2.operations import add_derivation as add_v2_derivation
 from kflow.v2.operations import add_node as add_v2_node
-from kflow.v2.query import query_affected_context as query_v2_affected_context
-from kflow.v2.query import query_context as query_v2_context
-from kflow.v2.query import query_impact as query_v2_impact
+from kflow.v2.query import query_affected_context, query_context, query_impact
 from kflow.v2.scan import confirm as confirm_v2_node
 from kflow.v2.scan import scan as scan_v2_project
 from kflow.v2.scan import scan_and_sync as scan_and_sync_v2_project
@@ -355,15 +353,15 @@ def dispatch_current(args):
         if args.affected and args.node is not None:
             raise ValueError("context accepts either NODE or --affected, not both")
         if args.affected:
-            result = query_v2_affected_context(root)
+            result = query_affected_context(root)
         elif args.node is not None:
-            result = query_v2_context(root, args.node)
+            result = query_context(root, args.node)
         else:
             raise ValueError("context requires NODE or --affected")
     elif args.command == "explain":
-        result = query_v2_impact(root, args.node)
+        result = query_impact(root, args.node)
     elif args.command == "review-order":
-        result = query_v2_impact(root)
+        result = query_impact(root)
     else:
         raise ValueError(f"unknown command: {args.command}")
     _print_v2(result, getattr(args, "json", False), args.command)

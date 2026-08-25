@@ -12,7 +12,9 @@ from kflow.v2.storage import (
     StorageError,
     load_confirmations,
     load_graph,
+    load_scan_cache,
     save_confirmation,
+    save_scan_cache,
 )
 from kflow.v2.versioning import (
     build_confirmation,
@@ -37,6 +39,17 @@ class ScanResult:
     file_fingerprints: dict[str, Fingerprint]
     effective_versions: dict[str, str]
     issues: tuple[ScanIssue, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScanSummary:
+    """One explicit scan's changes relative to the last reusable observation."""
+
+    scanned: ScanResult
+    added_files: tuple[str, ...]
+    modified_files: tuple[str, ...]
+    deleted_files: tuple[str, ...]
+    unchanged_files: tuple[str, ...]
 
 
 def scan(root: Path) -> ScanResult:
@@ -112,6 +125,40 @@ def scan(root: Path) -> ScanResult:
         effective_versions,
         (),
     )
+
+
+def scan_and_sync(root: Path) -> ScanSummary:
+    """Scan current facts and update only the ignored, disposable scan cache."""
+    root = Path(root)
+    scanned = scan(root)
+    previous = load_scan_cache(root)
+    if previous is None:
+        previous = {
+            item.path: item.fingerprint
+            for confirmation in scanned.confirmations.values()
+            for item in confirmation.files
+        }
+    current = scanned.file_fingerprints
+    previous_paths = set(previous)
+    current_paths = set(current)
+    added = tuple(sorted(current_paths - previous_paths))
+    deleted = tuple(sorted(previous_paths - current_paths))
+    modified = tuple(
+        sorted(
+            path
+            for path in previous_paths & current_paths
+            if previous[path] != current[path]
+        )
+    )
+    unchanged = tuple(
+        sorted(
+            path
+            for path in previous_paths & current_paths
+            if previous[path] == current[path]
+        )
+    )
+    save_scan_cache(root, current)
+    return ScanSummary(scanned, added, modified, deleted, unchanged)
 
 
 def validate(root: Path) -> tuple[ScanIssue, ...]:

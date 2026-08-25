@@ -55,14 +55,15 @@ def test_context_reports_node_status_relationships_and_derivations(tmp_path):
         "id": "nd_b",
         "name": "architecture",
         "files": ["docs/architecture.md"],
-        "status": "confirmed",
-        "reasons": [],
         "changed_files": [],
     }
-    assert [node["name"] for node in result["upstream"]] == ["requirements"]
-    assert [node["name"] for node in result["downstream"]] == ["implementation"]
-    assert [item["id"] for item in result["derivations"]] == ["dv_ab", "dv_bc"]
-    assert result["derivations"][0]["inputs"] == [
+    assert result["status"] == "confirmed"
+    assert result["reasons"] == []
+    relations = result["relations"]
+    assert [node["name"] for node in relations["upstream"]] == ["requirements"]
+    assert [node["name"] for node in relations["downstream"]] == ["implementation"]
+    assert [item["id"] for item in relations["derivations"]] == ["dv_ab", "dv_bc"]
+    assert relations["derivations"][0]["inputs"] == [
         {"node": "nd_a", "name": "requirements", "short": "提供需求", "detail": ""}
     ]
     assert result["issues"] == []

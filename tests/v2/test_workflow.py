@@ -88,9 +88,10 @@ def test_agent_workflow_uses_stable_context_to_close_review_loop(
         "ok",
         "schema_version",
         "node",
-        "upstream",
-        "downstream",
-        "derivations",
+        "status",
+        "reasons",
+        "relations",
+        "impact",
         "review_order",
         "issues",
     }
@@ -98,11 +99,11 @@ def test_agent_workflow_uses_stable_context_to_close_review_loop(
         "id": architecture["id"],
         "name": "architecture",
         "files": ["docs/architecture.md"],
-        "status": "affected",
-        "reasons": ["files_changed"],
         "changed_files": ["docs/architecture.md"],
     }
-    downstream = {item["name"]: item for item in context["downstream"]}
+    assert context["status"] == "affected"
+    assert context["reasons"] == ["files_changed"]
+    downstream = {item["name"]: item for item in context["impact"]["affected_nodes"]}
     assert downstream["implementation"]["impact_reason"] == "input_changed"
     assert downstream["implementation"]["depth"] == 1
     assert downstream["tests"]["impact_reason"] == "upstream_changed"
@@ -125,7 +126,9 @@ def test_agent_workflow_uses_stable_context_to_close_review_loop(
         implementation["id"],
         tests["id"],
     ]
-    assert explanation["affected_nodes"] == context["downstream"]
+    assert (
+        explanation["impact"]["affected_nodes"] == context["impact"]["affected_nodes"]
+    )
 
     for name in ("architecture", "implementation", "tests"):
         run_json(capsys, "confirm", name)

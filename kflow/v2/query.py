@@ -1,4 +1,4 @@
-"""Read-only context and impact explanations for KFlow v2."""
+"""Stable read-only context and impact queries for KFlow v2."""
 
 from __future__ import annotations
 
@@ -6,20 +6,46 @@ import heapq
 from collections import deque
 from pathlib import Path
 
-from kflow.v2.graph import KnowledgeGraph
+from kflow.v2.graph import GraphValidationError, KnowledgeGraph
 from kflow.v2.models import Derivation
 from kflow.v2.scan import ScanIssue, ScanResult, resolve_node_id, scan
+from kflow.v2.storage import StorageError
+
+
+QUERY_SCHEMA_FIELDS = frozenset(
+    {
+        "ok",
+        "schema_version",
+        "node",
+        "status",
+        "reasons",
+        "relations",
+        "impact",
+        "review_order",
+        "issues",
+    }
+)
 
 
 def query_context(root: Path, node_reference: str) -> dict:
     """Return one Node's status and relevant topology without file contents."""
-    scanned = scan(root)
-    graph = scanned.graph
-    node_id = resolve_node_id(graph, node_reference)
+    try:
+        scanned = scan(root)
+        graph = scanned.graph
+        node_id = resolve_node_id(graph, node_reference)
+    except (
+        GraphValidationError,
+        KeyError,
+        StorageError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return _error_result(error, node_reference)
+
     upstream_ids = tuple(
         candidate for candidate in graph.upstream(node_id) if candidate != node_id
     )
-    impact = _build_impact_result(scanned, (node_id,))
+    impact = _build_impact(scanned, (node_id,))
     downstream_ids = tuple(item["id"] for item in impact["affected_nodes"])
 
     derivation_ids: set[str] = set()
@@ -28,21 +54,87 @@ def query_context(root: Path, node_reference: str) -> dict:
         if producer is not None:
             derivation_ids.add(producer.id)
 
-    return {
-        "ok": not scanned.issues,
-        "schema_version": 2,
-        "node": _status_node(scanned, node_id),
-        "upstream": [_node_identity(graph, candidate) for candidate in upstream_ids],
-        "downstream": impact["affected_nodes"],
-        "derivations": [
+    status = scanned.statuses.get(node_id)
+    return _query_result(
+        scanned,
+        node=_node_result(scanned, node_id),
+        status=None if status is None else status.status,
+        reasons=[] if status is None else list(status.reasons),
+        upstream=[_node_identity(graph, candidate) for candidate in upstream_ids],
+        downstream=[_node_identity(graph, candidate) for candidate in downstream_ids],
+        derivations=[
             _derivation_result(graph, graph.derivations[derivation_id])
             for derivation_id in sorted(derivation_ids)
         ],
-        "review_order": [
+        impact=impact,
+        review_order=[
             candidate for candidate in impact["review_order"] if candidate != node_id
         ],
-        "issues": [_issue_result(issue) for issue in scanned.issues],
+    )
+
+
+def query_affected_context(root: Path) -> dict:
+    """Return the current project change roots and their affected review scope."""
+    try:
+        scanned = scan(root)
+    except (
+        GraphValidationError,
+        KeyError,
+        StorageError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return _error_result(error, None)
+
+    graph = scanned.graph
+    changed_root_ids = tuple(
+        node_id
+        for node_id in graph.topological_order()
+        if _is_change_root(scanned, node_id)
+    )
+    traversal_roots = _remaining_change_roots(scanned, changed_root_ids)
+    project_impact = _build_impact(scanned, traversal_roots)
+    review_ids = tuple(project_impact["review_order"])
+    affected_nodes = [
+        item for item in project_impact["affected_nodes"] if item["id"] in review_ids
+    ]
+    changed_nodes = [
+        _status_node(scanned, node_id)
+        for node_id in changed_root_ids
+        if node_id in review_ids
+    ]
+    derivation_ids = {
+        derivation_id
+        for item in affected_nodes
+        for path in item["paths"]
+        for derivation_id in path["derivations"]
     }
+    impact = {
+        "changed_nodes": changed_nodes,
+        "affected_nodes": affected_nodes,
+        "review_order": review_ids,
+    }
+    reasons = sorted(
+        {
+            reason
+            for node_id in review_ids
+            for reason in scanned.statuses[node_id].reasons
+        }
+    )
+    return _query_result(
+        scanned,
+        node=None,
+        status="affected" if review_ids else "confirmed",
+        reasons=reasons,
+        upstream=[],
+        downstream=[_node_identity(graph, node_id) for node_id in review_ids],
+        derivations=[
+            _derivation_result(graph, graph.derivations[derivation_id])
+            for derivation_id in sorted(derivation_ids)
+        ],
+        impact=impact,
+        review_order=list(review_ids),
+    )
 
 
 def query_impact(root: Path, node_reference: str | None = None) -> dict:
@@ -51,23 +143,131 @@ def query_impact(root: Path, node_reference: str | None = None) -> dict:
     When ``node_reference`` is omitted, file and producing-Derivation changes are
     used as roots. An explicit Node is always traversed, regardless of status.
     """
-    scanned = scan(root)
-    graph = scanned.graph
-    if node_reference is None:
-        root_ids = tuple(
-            node_id
-            for node_id in graph.topological_order()
-            if _is_change_root(scanned, node_id)
-        )
+    try:
+        scanned = scan(root)
+        graph = scanned.graph
+        if node_reference is None:
+            root_ids = tuple(
+                node_id
+                for node_id in graph.topological_order()
+                if _is_change_root(scanned, node_id)
+            )
+        else:
+            root_ids = (resolve_node_id(graph, node_reference),)
+    except (
+        GraphValidationError,
+        KeyError,
+        StorageError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return _error_result(error, node_reference)
+
+    impact = _build_impact(scanned, root_ids)
+    target_id = root_ids[0] if node_reference is not None else None
+    target_status = None if target_id is None else scanned.statuses.get(target_id)
+    affected_ids = tuple(item["id"] for item in impact["affected_nodes"])
+    derivation_ids = {
+        derivation_id
+        for item in impact["affected_nodes"]
+        for path in item["paths"]
+        for derivation_id in path["derivations"]
+    }
+    project_reasons = sorted(
+        {reason for item in impact["changed_nodes"] for reason in item["reasons"]}
+    )
+    return _query_result(
+        scanned,
+        node=None if target_id is None else _node_result(scanned, target_id),
+        status=(
+            ("affected" if impact["review_order"] else "confirmed")
+            if target_id is None
+            else (None if target_status is None else target_status.status)
+        ),
+        reasons=(
+            project_reasons
+            if target_id is None
+            else ([] if target_status is None else list(target_status.reasons))
+        ),
+        upstream=[],
+        downstream=[_node_identity(graph, candidate) for candidate in affected_ids],
+        derivations=[
+            _derivation_result(graph, graph.derivations[derivation_id])
+            for derivation_id in sorted(derivation_ids)
+        ],
+        impact=impact,
+        review_order=impact["review_order"],
+    )
+
+
+def _query_result(
+    scanned: ScanResult,
+    *,
+    node: dict | None,
+    status: str | None,
+    reasons: list[str],
+    upstream: list[dict],
+    downstream: list[dict],
+    derivations: list[dict],
+    impact: dict,
+    review_order: list[str],
+) -> dict:
+    result = {
+        "ok": not scanned.issues,
+        "schema_version": 2,
+        "node": node,
+        "status": status,
+        "reasons": reasons,
+        "relations": {
+            "upstream": upstream,
+            "downstream": downstream,
+            "derivations": derivations,
+        },
+        "impact": {
+            "changed_nodes": impact["changed_nodes"],
+            "affected_nodes": impact["affected_nodes"],
+        },
+        "review_order": review_order,
+        "issues": [_issue_result(issue) for issue in scanned.issues],
+    }
+    assert set(result) == QUERY_SCHEMA_FIELDS
+    return result
+
+
+def _error_result(error: Exception, reference: str | None) -> dict:
+    if isinstance(error, GraphValidationError):
+        issues = [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "references": list(issue.references),
+            }
+            for issue in error.issues
+        ]
     else:
-        root_ids = (resolve_node_id(graph, node_reference),)
+        code = "unknown_node" if isinstance(error, KeyError) else "invalid_project"
+        issues = [
+            {
+                "code": code,
+                "message": str(error).strip("'"),
+                "references": [] if reference is None else [reference],
+            }
+        ]
+    return {
+        "ok": False,
+        "schema_version": 2,
+        "node": None,
+        "status": "error",
+        "reasons": [],
+        "relations": {"upstream": [], "downstream": [], "derivations": []},
+        "impact": {"changed_nodes": [], "affected_nodes": []},
+        "review_order": [],
+        "issues": issues,
+    }
 
-    return _build_impact_result(scanned, root_ids)
 
-
-def _build_impact_result(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict:
+def _build_impact(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict:
     graph = scanned.graph
-
     impact: dict[str, dict] = {}
     for root_id in root_ids:
         paths = _shortest_paths(graph, root_id)
@@ -76,11 +276,7 @@ def _build_impact_result(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict
                 continue
             entry = impact.setdefault(
                 target_id,
-                {
-                    "depth": len(path["derivations"]),
-                    "roots": [],
-                    "paths": [],
-                },
+                {"depth": len(path["derivations"]), "roots": [], "paths": []},
             )
             entry["depth"] = min(entry["depth"], len(path["derivations"]))
             entry["roots"].append(root_id)
@@ -103,8 +299,8 @@ def _build_impact_result(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict
             {
                 **_node_identity(graph, node_id),
                 "status": None if status is None else status.status,
-                "status_reasons": [] if status is None else list(status.reasons),
-                "changed_files": ([] if status is None else list(status.changed_files)),
+                "reasons": [] if status is None else list(status.reasons),
+                "changed_files": [] if status is None else list(status.changed_files),
                 "depth": entry["depth"],
                 "roots": entry["roots"],
                 "impact_reason": (
@@ -115,12 +311,9 @@ def _build_impact_result(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict
         )
 
     return {
-        "ok": not scanned.issues,
-        "schema_version": 2,
         "changed_nodes": [_status_node(scanned, node_id) for node_id in root_ids],
         "affected_nodes": affected_nodes,
         "review_order": review_order,
-        "issues": [_issue_result(issue) for issue in scanned.issues],
     }
 
 
@@ -134,10 +327,7 @@ def _shortest_paths(graph: KnowledgeGraph, root_id: str) -> dict[str, dict]:
                 continue
             paths[target_id] = {
                 "nodes": [*paths[node_id]["nodes"], target_id],
-                "derivations": [
-                    *paths[node_id]["derivations"],
-                    derivation_id,
-                ],
+                "derivations": [*paths[node_id]["derivations"], derivation_id],
             }
             queue.append(target_id)
     return paths
@@ -189,6 +379,42 @@ def _is_change_root(scanned: ScanResult, node_id: str) -> bool:
     return bool({"files_changed", "derivation_changed"} & set(status.reasons))
 
 
+def _remaining_change_roots(
+    scanned: ScanResult, changed_root_ids: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Recover reviewed roots still visible in downstream input baselines."""
+    candidates = set(changed_root_ids)
+    for node_id, status in scanned.statuses.items():
+        if "input_changed" not in status.reasons:
+            continue
+        producer = scanned.graph.producer_of(node_id)
+        confirmation = scanned.confirmations.get(node_id)
+        if producer is None or confirmation is None:
+            continue
+        confirmed_inputs = {
+            item.node: item.effective_version for item in confirmation.inputs
+        }
+        candidates.update(
+            item.node
+            for item in producer.inputs
+            if confirmed_inputs.get(item.node)
+            != scanned.effective_versions.get(item.node)
+        )
+
+    topmost = {
+        candidate
+        for candidate in candidates
+        if not any(
+            candidate in scanned.graph.downstream(other)
+            for other in candidates
+            if other != candidate
+        )
+    }
+    return tuple(
+        node_id for node_id in scanned.graph.topological_order() if node_id in topmost
+    )
+
+
 def _needs_review(scanned: ScanResult, node_id: str) -> bool:
     status = scanned.statuses.get(node_id)
     return status is not None and status.needs_review
@@ -199,13 +425,20 @@ def _node_identity(graph: KnowledgeGraph, node_id: str) -> dict:
     return {"id": node.id, "name": node.name, "files": list(node.files)}
 
 
-def _status_node(scanned: ScanResult, node_id: str) -> dict:
+def _node_result(scanned: ScanResult, node_id: str) -> dict:
     status = scanned.statuses.get(node_id)
     return {
         **_node_identity(scanned.graph, node_id),
+        "changed_files": [] if status is None else list(status.changed_files),
+    }
+
+
+def _status_node(scanned: ScanResult, node_id: str) -> dict:
+    status = scanned.statuses.get(node_id)
+    return {
+        **_node_result(scanned, node_id),
         "status": None if status is None else status.status,
         "reasons": [] if status is None else list(status.reasons),
-        "changed_files": [] if status is None else list(status.changed_files),
     }
 
 

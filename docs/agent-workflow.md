@@ -24,11 +24,16 @@ tests
 
 ## 1. 检测变化
 
-Agent 完成文件修改后先执行只读扫描：
+Agent 完成文件修改后先执行扫描：
 
 ```bash
-kflow status --json
+kflow scan --json
 ```
+
+`scan` 比较当前受管文件与上次可重建观察值（首次执行时使用 Confirmation
+基线），输出 `added`、`modified`、`deleted` 变化摘要，并把最新 fingerprint
+写入被 Git 忽略的 `.kflow/cache/scan.json`。它不修改 Node、Derivation、
+Confirmation 或用户文件；共享状态仍由当前事实与 Confirmation 即时计算。
 
 预期结果：
 
@@ -46,12 +51,12 @@ Agent 查询变化目标的结构化上下文：
 kflow context architecture --json
 ```
 
-稳定结果包含：
+`context` 与 `explain` 共享同一个稳定 JSON 顶层契约：
 
-- `node`：目标 ID、名称、全部文件、当前状态和 reasons；
-- `upstream`：目标的上游依赖；
-- `downstream`：下游 Node、状态、直接或间接影响原因、深度和路径；
-- `derivations`：相关推导及显式 input/output 作用；
+- `schema_version`：当前机器契约版本；
+- `node`、`status`、`reasons`：目标身份与当前状态；
+- `relations`：上游、下游身份及相关 Derivation；
+- `impact`：变化根、受影响 Node、深度和可解释路径；
 - `review_order`：目标之外仍需检查的下游顺序；
 - `issues`：与 review reasons 分离的校验问题。
 
@@ -69,7 +74,25 @@ kflow explain architecture --json
 
 `explain` 的 `review_order` 包含仍需检查的变化根；`context` 已单独展示目标，因此它的 `review_order` 复用同一排序后排除目标本身。
 
-## 4. 只检查必要范围
+## 4. 获取项目级待检查范围
+
+不想预先指定变化根时，Agent 可以直接查询：
+
+```bash
+kflow context --affected --json
+```
+
+结果列出当前变化范围内的 `needs_review` Node、每个 Node 的 reasons，以及稳定的
+`review_order`。自动检测到的 `files_changed` 或 `derivation_changed` Node 位于
+`impact.changed_nodes`；相关下游位于 `impact.affected_nodes`。即使变化根先被
+确认，KFlow 仍能从下游保存的直接输入版本基线恢复该范围，尚未确认的
+`input_changed` 下游会继续保留。与这次变化无关的孤立 `unconfirmed` Node 不会
+被混入 `--affected` 结果。
+
+空结果保持同一 JSON schema：`node` 为 `null`、`status` 为 `confirmed`，
+`impact` 和 `review_order` 使用空数组，不要求调用方解析文本或特殊分支。
+
+## 5. 只检查必要范围
 
 Agent 根据 context 和 explain 决定读取哪些文件。这个场景只要求关注：
 
@@ -85,7 +108,7 @@ Agent 根据 context 和 explain 决定读取哪些文件。这个场景只要�
 - 无需修改：确认它在当前输入条件下仍成立；
 - 暂时无法判断：保留待检查状态。
 
-## 5. 分别确认
+## 6. 分别确认
 
 Agent 完成实际检查后，按顺序分别确认：
 
@@ -97,16 +120,32 @@ kflow confirm tests --json
 
 confirm 一次只作用于一个 Node，不级联，也不改变 effective version。确认上游后，下游仍保持原来的待检查状态，直到它自身完成检查并被单独确认。
 
-## 6. 验证闭环
+## 7. 验证闭环
 
 最后重新扫描：
 
 ```bash
-kflow status --json
+kflow scan --json
+kflow context --affected --json
 kflow validate --json
 ```
 
 本次影响范围内的 Node 应全部为 `confirmed` 且 reasons 为空，validation issues 也应为空。项目中与本次变化无关的历史未确认 Node 不阻塞该闭环。
+
+## 完整命令序列
+
+```text
+Agent 修改 docs/architecture.md
+→ kflow scan --json
+→ kflow explain architecture --json
+→ kflow context architecture --json
+→ kflow context --affected --json
+→ Agent 按 review_order 检查相关文件
+→ kflow confirm architecture --json
+→ kflow confirm implementation --json
+→ kflow confirm tests --json
+→ kflow context --affected --json
+```
 
 ## 边界
 

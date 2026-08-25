@@ -51,15 +51,16 @@ def test_explain_distinguishes_direct_and_indirect_impact(tmp_path):
 
     result = query_impact(tmp_path, "a")
 
-    assert [item["id"] for item in result["changed_nodes"]] == ["nd_a"]
-    assert result["changed_nodes"][0]["reasons"] == ["files_changed"]
-    by_id = {item["id"]: item for item in result["affected_nodes"]}
+    impact = result["impact"]
+    assert [item["id"] for item in impact["changed_nodes"]] == ["nd_a"]
+    assert impact["changed_nodes"][0]["reasons"] == ["files_changed"]
+    by_id = {item["id"]: item for item in impact["affected_nodes"]}
     assert by_id["nd_b"]["depth"] == 1
     assert by_id["nd_b"]["impact_reason"] == "input_changed"
-    assert by_id["nd_b"]["status_reasons"] == ["input_changed"]
+    assert by_id["nd_b"]["reasons"] == ["input_changed"]
     assert by_id["nd_c"]["depth"] == 2
     assert by_id["nd_c"]["impact_reason"] == "upstream_changed"
-    assert by_id["nd_c"]["status_reasons"] == ["input_changed"]
+    assert by_id["nd_c"]["reasons"] == ["input_changed"]
     assert by_id["nd_c"]["paths"] == [
         {
             "root": "nd_a",
@@ -78,8 +79,9 @@ def test_automatic_impact_merges_change_roots_with_stable_review_order(tmp_path)
 
     result = query_impact(tmp_path)
 
-    assert [item["id"] for item in result["changed_nodes"]] == ["nd_a", "nd_b"]
-    by_id = {item["id"]: item for item in result["affected_nodes"]}
+    impact = result["impact"]
+    assert [item["id"] for item in impact["changed_nodes"]] == ["nd_a", "nd_b"]
+    by_id = {item["id"]: item for item in impact["affected_nodes"]}
     assert by_id["nd_b"]["roots"] == ["nd_a"]
     assert by_id["nd_c"]["depth"] == 1
     assert by_id["nd_c"]["roots"] == ["nd_a", "nd_b"]

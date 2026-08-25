@@ -54,11 +54,12 @@ def test_default_cli_runs_v2_core_workflow_without_domain_api(
 
     context = run_cli(capsys, "context", "b")
     assert context["node"]["name"] == "b"
-    assert [node["name"] for node in context["upstream"]] == ["a"]
+    assert [node["name"] for node in context["relations"]["upstream"]] == ["a"]
 
     explanation = run_cli(capsys, "explain", "a")
-    assert explanation["affected_nodes"][0]["name"] == "b"
-    assert explanation["affected_nodes"][0]["impact_reason"] == "input_changed"
+    affected = explanation["impact"]["affected_nodes"]
+    assert affected[0]["name"] == "b"
+    assert affected[0]["impact_reason"] == "input_changed"
 
     review_order = run_cli(capsys, "review-order")
     assert review_order["review_order"] == [
@@ -90,6 +91,6 @@ def test_cli_does_not_expose_v2_command_group(capsys):
         parser.parse_args(["v2", "init"])
 
     assert (
-        "{init,add-node,derive,status,confirm,validate,context,explain,review-order,legacy}"
+        "{init,add-node,derive,status,scan,confirm,validate,context,explain,review-order,legacy}"
         in capsys.readouterr().err
     )

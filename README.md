@@ -37,7 +37,9 @@ kflow derive \
   --output b "形成 B"
 
 kflow status
+kflow scan
 kflow context b
+kflow context --affected
 kflow explain a
 kflow review-order
 kflow confirm a
@@ -102,6 +104,17 @@ kflow status --json
 
 规范原因包括 `unconfirmed`、`files_changed`、`derivation_changed` 和 `input_changed`。缺失文件、非法图或损坏的 schema 属于 validation issue，不会伪装成普通 review reason。
 
+### `kflow scan`
+
+执行同样的状态计算，并额外输出受管文件相对上次观察的 `added`、`modified`
+和 `deleted` 摘要。最新 fingerprint 只写入可删除、被 Git 忽略的
+`.kflow/cache/scan.json`；不会修改共享事实、Confirmation 或用户正文。
+
+```bash
+kflow scan
+kflow scan --json
+```
+
 ### `kflow context <node>`
 
 只读查询一个 Node 当前最值得关注的结构信息：自身文件与状态、全部上游、全部下游，以及这些路径涉及的 Derivation 和显式作用描述。
@@ -112,6 +125,17 @@ kflow context architecture --json
 ```
 
 Context 只返回登记的文件路径和元数据，不读取或返回文件正文。
+
+省略 Node 并使用 `--affected` 可一次获取当前变化范围内的待检查 Node、原因与
+稳定顺序；无关的孤立 `unconfirmed` Node 不会混入结果：
+
+```bash
+kflow context --affected
+kflow context --affected --json
+```
+
+`context` 与 `explain` 的 JSON 统一使用 `node`、`status`、`reasons`、
+`relations`、`impact`、`review_order` 和 `issues` 顶层字段。
 
 完整的 Agent 修改、影响检查与逐 Node 确认示例见 [`docs/agent-workflow.md`](docs/agent-workflow.md)。
 

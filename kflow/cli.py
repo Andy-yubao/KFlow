@@ -27,6 +27,8 @@ from kflow.output import (
 )
 from kflow.v2.operations import add_derivation as add_v2_derivation
 from kflow.v2.operations import add_node as add_v2_node
+from kflow.v2.query import query_context as query_v2_context
+from kflow.v2.query import query_impact as query_v2_impact
 from kflow.v2.scan import confirm as confirm_v2_node
 from kflow.v2.scan import scan as scan_v2_project
 from kflow.v2.scan import validate as validate_v2_project
@@ -95,6 +97,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_validate = sub.add_parser("validate", help="Validate KFlow facts")
     p_validate.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_context = sub.add_parser("context", help="Show a Node's review context")
+    p_context.add_argument("node")
+    p_context.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_explain = sub.add_parser("explain", help="Explain a Node's downstream impact")
+    p_explain.add_argument("node")
+    p_explain.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_review = sub.add_parser(
+        "review-order", help="Show the current recommended review order"
+    )
+    p_review.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_legacy = sub.add_parser("legacy", help="Use the legacy v1 command interface")
     legacy_sub = p_legacy.add_subparsers(dest="legacy_command", required=True)
@@ -324,9 +339,15 @@ def dispatch_current(args):
                 for issue in issues
             ],
         }
+    elif args.command == "context":
+        result = query_v2_context(root, args.node)
+    elif args.command == "explain":
+        result = query_v2_impact(root, args.node)
+    elif args.command == "review-order":
+        result = query_v2_impact(root)
     else:
         raise ValueError(f"unknown command: {args.command}")
-    _print_v2(result, getattr(args, "json", False))
+    _print_v2(result, getattr(args, "json", False), args.command)
 
 
 def _v2_status_result(root: Path) -> dict:
@@ -360,9 +381,18 @@ def _v2_status_result(root: Path) -> dict:
     }
 
 
-def _print_v2(result: dict, json_output: bool) -> None:
+def _print_v2(result: dict, json_output: bool, command: str = "") -> None:
     if json_output:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return
+    if command == "context":
+        _print_v2_context(result)
+        return
+    if command == "explain":
+        _print_v2_explanation(result)
+        return
+    if command == "review-order":
+        _print_v2_review_order(result)
         return
     if "nodes" in result:
         for node in result["nodes"]:
@@ -370,3 +400,76 @@ def _print_v2(result: dict, json_output: bool) -> None:
             print(f"{node['name']}: {node['status']} ({reasons})")
         return
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def _print_v2_context(result: dict) -> None:
+    node = result["node"]
+    reasons = ", ".join(node["reasons"]) or "none"
+    print("Node:")
+    print(f"{node['name']} ({node['id']})")
+    print("\nFiles:")
+    for path in node["files"]:
+        print(path)
+    print("\nStatus:")
+    print(f"{node['status']} ({reasons})")
+    print("\nUpstream:")
+    _print_node_names(result["upstream"])
+    print("\nDownstream:")
+    _print_node_names(result["downstream"])
+    print("\nDerivations:")
+    if not result["derivations"]:
+        print("none")
+    for derivation in result["derivations"]:
+        print(f"{derivation['id']}: {derivation['short']}")
+
+
+def _print_v2_explanation(result: dict) -> None:
+    roots = result["changed_nodes"]
+    names = {node["id"]: node["name"] for node in (*roots, *result["affected_nodes"])}
+    print("Cause:")
+    if not roots:
+        print("none")
+    for node in roots:
+        reasons = ", ".join(node["reasons"]) or "explicit impact query"
+        print(f"{node['name']}: {reasons}")
+
+    direct = [item for item in result["affected_nodes"] if item["depth"] == 1]
+    indirect = [item for item in result["affected_nodes"] if item["depth"] > 1]
+    print("\nDirect impact:")
+    _print_impacts(direct, names)
+    print("\nIndirect impact:")
+    _print_impacts(indirect, names)
+    print("\nRecommended review order:")
+    _print_review_items(result)
+
+
+def _print_v2_review_order(result: dict) -> None:
+    print("Recommended review order:")
+    _print_review_items(result)
+
+
+def _print_node_names(nodes: list[dict]) -> None:
+    if not nodes:
+        print("none")
+    for node in nodes:
+        print(node["name"])
+
+
+def _print_impacts(nodes: list[dict], names: dict[str, str]) -> None:
+    if not nodes:
+        print("none")
+    for node in nodes:
+        path = " -> ".join(names[node_id] for node_id in node["paths"][0]["nodes"])
+        print(node["name"])
+        print(f"Reason: {node['impact_reason']} via {path}")
+
+
+def _print_review_items(result: dict) -> None:
+    nodes = {
+        node["id"]: node["name"]
+        for node in (*result["changed_nodes"], *result["affected_nodes"])
+    }
+    if not result["review_order"]:
+        print("none")
+    for position, node_id in enumerate(result["review_order"], start=1):
+        print(f"{position}. {nodes[node_id]}")

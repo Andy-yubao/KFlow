@@ -37,6 +37,9 @@ kflow derive \
   --output b "形成 B"
 
 kflow status
+kflow context b
+kflow explain a
+kflow review-order
 kflow confirm a
 kflow confirm b
 kflow validate
@@ -98,6 +101,39 @@ kflow status --json
 - `confirmed`：当前事实与确认基线一致。
 
 规范原因包括 `unconfirmed`、`files_changed`、`derivation_changed` 和 `input_changed`。缺失文件、非法图或损坏的 schema 属于 validation issue，不会伪装成普通 review reason。
+
+### `kflow context <node>`
+
+只读查询一个 Node 当前最值得关注的结构信息：自身文件与状态、全部上游、全部下游，以及这些路径涉及的 Derivation 和显式作用描述。
+
+```bash
+kflow context architecture
+kflow context architecture --json
+```
+
+Context 只返回登记的文件路径和元数据，不读取或返回文件正文。
+
+### `kflow explain <node>`
+
+以指定 Node 为变化根解释下游影响。显式查询不依赖该 Node 当前是否已经出现 review reason；结果区分直接与间接影响，并在 JSON 中给出影响深度、来源根、经过的 Node/Derivation 路径、当前状态原因和稳定 `review_order`。
+
+```bash
+kflow explain architecture
+kflow explain architecture --json
+```
+
+`affected` 只表示可能需要检查，不表示 KFlow 已判断文件错误或要求修改。
+
+### `kflow review-order`
+
+从当前扫描中自动选择具有 `files_changed` 或 `derivation_changed` 的变化根，并按上游优先的稳定拓扑顺序展示仍需检查的相关 Node。
+
+```bash
+kflow review-order
+kflow review-order --json
+```
+
+该命令复用与 `explain` 相同的 impact 结果和排序语义；它不保存顺序，也不引入独立状态机。尚未确认的 Node 会保留 `unconfirmed`，但不会仅因未确认就自动成为变化根。
 
 ### `kflow confirm <node>`
 

@@ -6,7 +6,7 @@
 >
 > 行为验收：`KFlow_v2_使用场景清单.md`。
 >
-> 实现状态：领域内核已按本文修正，并已实现 schema v2 最小持久化、scan/status、单 Node confirm 与正式顶层 CLI 最小闭环。`v2` 继续作为内部模块与 schema 版本，不再是用户命令层级；impact/review_order、完整查询与事务恢复仍待后续阶段。
+> 实现状态：领域内核已按本文修正，并已实现 schema v2 最小持久化、scan/status、单 Node confirm、context、impact explanation 与 `review_order`。`v2` 继续作为内部模块与 schema 版本，不再是用户命令层级；按文件定位、直接 neighborhood、剩余影响闭环与事务恢复仍待后续阶段。
 
 ## 1. 定位与边界
 
@@ -254,7 +254,7 @@ scan 是只读计算：加载并校验元数据，读取 Node 文件计算 finge
 - 从 Node 作为 input 的 Derivation 向其全部 outputs 传播。
 - `depth=1` 表示直接输出，后续为传递影响。
 - 多根合并时保留目标的最小深度、来源根和可解释路径。
-- `review_order` 是一次影响查询结果中相关 `needs_review` 子图的稳定拓扑序；上游先于下游，同层按稳定 ID 排序。它必须随 impact 一起返回，不是独立用户能力。
+- `review_order` 是一次影响查询结果中相关 `needs_review` 子图的稳定拓扑序；上游先于下游，同层按稳定 ID 排序。它必须随 impact 一起返回。用户界面可以提供专用视图，但必须复用同一 impact 结果，不得另造排序领域能力。
 - 显式指定 Node 的影响查询始终从该 Node 遍历，不依赖其当前状态。
 
 上游确认不会修改下游 Confirmation；下游仍可通过旧输入版本基线保持 `input_changed`。
@@ -355,7 +355,7 @@ v1 无生产者的源 Node 可直接迁移为 v2 源 Node，不再补建零输�
 
 ## 11. 实施边界与依赖顺序
 
-v2 当前暂停开发。恢复时按依赖顺序推进，每阶段单独审查：
+v2 当前已推进到 Agent 查询基础阶段。后续继续按依赖顺序推进，每阶段单独审查：
 
 1. **修正纯领域内核**：落实无生产者源 Node、Derivation 非空输入、至多一个生产者、源 Node effective version 和可空 detail。
 2. **最小规范读写**：仅支撑首切片所需的 project、Node、Derivation、Confirmation 加载、校验与原子确认写入。
@@ -381,7 +381,7 @@ v2 当前暂停开发。恢复时按依赖顺序推进，每阶段单独审查�
 | 删除 producing Derivation | outputs 成为源并为 `derivation_changed`；旧 Confirmation 保留 |
 | C 自身变化且与 D 同源 | 展示 D 为 sibling，不自动判定 D 已变化 |
 | 按文件路径定位 | 返回所属 Node 与全部路径；未登记不是错误 |
-| impact 查询 | 同时返回稳定 `review_order`，不存在独立排序操作 |
+| impact 查询 | 同时返回稳定 `review_order`；专用 CLI 视图复用同一结果，不存在独立排序领域操作 |
 | 删除元数据 | 用户文件字节不变 |
 | 删除 cache/index | 可从 tracked 规范文件完整重建 |
 | checkout 历史 commit | 可重建该版本拓扑和确认基线 |
@@ -394,5 +394,5 @@ v2 当前暂停开发。恢复时按依赖顺序推进，每阶段单独审查�
 - 三层 `short` 必填，三层 `detail` 可为空。
 - producer 变化由 Derivation 操作组合表达，不提供独立 `rewire`。
 - producer 增删或替换时保留旧 Confirmation，以 `derivation_changed` 表达基线差异。
-- confirm 只写一个 Node；`review_order` 只随 impact 查询返回。
+- confirm 只写一个 Node；`review_order` 只由 impact 查询计算，专用展示不得另造排序语义。
 - 首切片只验证 Agent 黄金流程；其余能力按正式使用场景 Section D 或排除清单处理。

@@ -1,6 +1,6 @@
 # KFlow v2 首个垂直切片实施计划
 
-> 状态：进行中。领域内核、最小规范持久化、scan/status、单 Node confirm 与基础 CLI 已实现；impact/review_order 和完整 Agent 查询仍待后续阶段。
+> 状态：进行中。领域内核、最小规范持久化、scan/status、单 Node confirm、context、impact explanation 与 `review_order` 已实现；按文件定位、直接 neighborhood 和剩余影响闭环仍待后续阶段。
 > 本计划仍只约束正式使用场景 Section A 的 Agent 黄金流程；后续不得借此扩展迁移、UI、MCP 或 watcher。
 
 ## 1. 目标与停止点
@@ -128,7 +128,7 @@
 - 汇合目标只出现一次，保留最小 depth 和全部 roots；
 - 上游先于下游，同层按稳定 ID；重复 scan 结果字节级稳定；
 - 缺失文件、坏引用、环和坏 schema 只作为 issues，不伪装成普通 reasons；
-- `review_order` 只出现在 impact 结果契约中，不增加独立命令或领域对象。
+- `review_order` 只由 impact 结果契约计算，不增加独立领域对象；专用 CLI 视图必须直接复用同一结果。
 
 阶段出口：修改文件后可得到完整、稳定且可解释的待检查范围。
 

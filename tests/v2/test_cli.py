@@ -52,6 +52,28 @@ def test_default_cli_runs_v2_core_workflow_without_domain_api(
     assert by_name["b"]["status"] == "affected"
     assert by_name["b"]["reasons"] == ["input_changed"]
 
+    context = run_cli(capsys, "context", "b")
+    assert context["node"]["name"] == "b"
+    assert [node["name"] for node in context["upstream"]] == ["a"]
+
+    explanation = run_cli(capsys, "explain", "a")
+    assert explanation["affected_nodes"][0]["name"] == "b"
+    assert explanation["affected_nodes"][0]["impact_reason"] == "input_changed"
+
+    review_order = run_cli(capsys, "review-order")
+    assert review_order["review_order"] == [
+        by_name["a"]["id"],
+        by_name["b"]["id"],
+    ]
+
+    main(["explain", "a"])
+    explanation_text = capsys.readouterr().out
+    assert "Direct impact:\nb" in explanation_text
+    assert "Reason: input_changed via a -> b" in explanation_text
+
+    main(["review-order"])
+    assert "1. a\n2. b" in capsys.readouterr().out
+
     validation = run_cli(capsys, "validate")
     assert validation == {"ok": True, "schema_version": 2, "issues": []}
 
@@ -68,6 +90,6 @@ def test_cli_does_not_expose_v2_command_group(capsys):
         parser.parse_args(["v2", "init"])
 
     assert (
-        "{init,add-node,derive,status,confirm,validate,legacy}"
+        "{init,add-node,derive,status,confirm,validate,context,explain,review-order,legacy}"
         in capsys.readouterr().err
     )

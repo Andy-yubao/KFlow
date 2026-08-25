@@ -1,8 +1,13 @@
 # KFlow — Knowledge Flow CLI
 
-KFlow 是面向人类与 AI Agent 协同开发的知识拓扑和影响范围管理工具。它维护重要项目文件组成的 Knowledge Node、显式 Derivation、变化状态与确认基线，帮助使用者判断应该检查哪些文件以及为什么。
+KFlow 是面向人类与 AI Agent 协同开发的知识拓扑与影响范围管理工具。它记录重要项目文件组成的 Knowledge Node、显式 Derivation 和逐 Node 的 Confirmation，帮助使用者回答：
 
-KFlow 不保存或返回文档正文，也不会创建、编辑、移动或删除用户正文。
+- 当前项目是否健康；
+- 哪些重要知识发生了变化；
+- 哪些 Node 可能需要检查；
+- 为什么需要检查，以及建议按什么顺序检查。
+
+KFlow 不保存或返回文档正文，不分析内容，不自动修改文件，也不替 Agent 或人类做判断。
 
 ## 安装
 
@@ -12,7 +17,7 @@ KFlow 不保存或返回文档正文，也不会创建、编辑、移动或删�
 pip install -e .
 ```
 
-也可以通过 pipx 或 uv 安装：
+也可以使用 pipx 或 uv：
 
 ```bash
 pipx install .
@@ -20,186 +25,144 @@ pipx install .
 uv tool install .
 ```
 
-## 快速开始
+安装后可直接查看正式命令：
 
-当前正式 CLI 已采用 schema v2 架构。`v2` 是内部实现版本，不是用户命令层级；用户直接调用 `kflow <command>`。
+```bash
+kflow --help
+```
 
-先准备两个需要纳入 KFlow 的已有文件，例如 `docs/a.md` 和 `docs/b.md`，然后执行：
+## 五分钟快速开始
+
+假设项目中已有 `docs/requirements.md` 和 `docs/architecture.md`：
 
 ```bash
 kflow init
-kflow add-node a --file docs/a.md
-kflow add-node b --file docs/b.md
+
+kflow add-node requirements --file docs/requirements.md
+kflow add-node architecture --file docs/architecture.md
 
 kflow derive \
-  --short "由 A 形成 B" \
-  --input a "使用 A" \
-  --output b "形成 B"
+  --short "根据需求形成架构" \
+  --input requirements "提供产品目标" \
+  --output architecture "形成系统设计"
+```
 
+首次查看状态：
+
+```bash
 kflow status
-kflow scan
-kflow context b
+```
+
+未确认的 Node 会显示为需要关注。实际检查每个 Node 后分别确认：
+
+```bash
+kflow confirm requirements
+kflow confirm architecture
+```
+
+之后如果 `docs/requirements.md` 发生变化，`kflow status` 会指出：
+
+- `requirements` 的受管文件发生了变化；
+- `architecture` 的直接输入条件发生了变化；
+- 下一步可以运行 `kflow context --affected` 查看影响范围与建议检查顺序。
+
+## 日常工作流
+
+```text
+查看状态
+→ 获取受影响范围
+→ 按需读取和检查真实文件
+→ 必要时修改文件
+→ 重新扫描
+→ 对每个已检查 Node 单独确认
+→ 验证本次影响范围闭合
+```
+
+对应命令：
+
+```bash
+kflow status
 kflow context --affected
-kflow explain a
 kflow review-order
-kflow confirm a
-kflow confirm b
+
+# 人或 Agent 检查、按需修改文件
+kflow scan
+kflow explain requirements
+
+kflow confirm requirements
+kflow confirm architecture
 kflow validate
 ```
 
-Node 可以绑定多个完整文件，只需重复 `--file`。Derivation 支持多输入、多输出，只需重复 `--input` 或 `--output`。
+`affected` 表示“可能需要检查”，不表示 KFlow 已判断文件错误或要求修改。
 
 ## 正式命令
 
-### `kflow init [path]`
+| 命令 | 用途 |
+|---|---|
+| `kflow init [path]` | 初始化 Git-native 元数据，不扫描项目建图 |
+| `kflow add-node <name> --file <path>` | 将一个或多个已有完整文件登记为 Node |
+| `kflow derive ...` | 用显式 Derivation 连接已有 Node |
+| `kflow status` | 展示项目状态、待关注 Node、原因和问题 |
+| `kflow scan` | 观察受管文件变化并刷新可重建本地缓存 |
+| `kflow context <node>` | 查看一个 Node 的路径、状态、关系和影响 |
+| `kflow context --affected` | 查看当前受影响范围与检查顺序 |
+| `kflow explain <node>` | 解释指定 Node 的直接和传递影响 |
+| `kflow review-order` | 展示当前变化对应的稳定检查顺序 |
+| `kflow confirm <node>` | 记录一个 Node 已在当前条件下完成检查 |
+| `kflow validate` | 校验元数据、文件引用与图不变量 |
 
-初始化 schema v2 元数据目录。它不会扫描项目建立图谱，也不会创建用户正文。
+所有命令都支持 `--json`。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
+
+### 多文件 Node
+
+一个 Node 可以由多个完整文件共同构成：
 
 ```bash
-kflow init
-kflow init /path/to/project
-```
-
-### `kflow add-node <name> --file <path>`
-
-把一个或多个已存在的项目相对路径登记为 Node。文件必须存在，且同一文件不能属于多个 Node。
-
-```bash
-kflow add-node requirements --file docs/requirements.md
 kflow add-node architecture \
   --file docs/architecture.md \
   --file docs/architecture.svg
 ```
 
-没有 producing Derivation 的 Node 自动视为源 Node，孤立 Node 也是合法的。
+KFlow 不建立目录、章节、段落或代码片段级 Node。
 
-### `kflow derive`
-
-用一个不可拆分的 Derivation 连接已有 Node。输入和输出至少各一个，每个输出 Node 至多有一个 producer，整个图必须保持无环。
+### 多输入、多输出 Derivation
 
 ```bash
 kflow derive \
   --short "综合需求与约束形成设计" \
-  --detail "根据功能目标与部署限制确定系统设计。" \
+  --detail "确定组件边界和接口。" \
   --input requirements "提供功能目标" \
   --input constraints "提供部署限制" \
-  --output architecture "形成系统架构" \
+  --output architecture "形成总体架构" \
   --output api-design "形成接口方案"
 ```
 
-### `kflow status`
+Derivation 的输入和输出均至少一个；每个 Node 至多有一个 producer；整个图必须保持无环。
 
-只读扫描当前项目，计算 Node 状态、可解释的 review reasons 和独立的 validation issues。
+### Confirmation
 
-```bash
-kflow status
-kflow status --json
-```
-
-粗粒度状态包括：
-
-- `valid`：尚无确认基线；
-- `affected`：当前事实与确认基线不同；
-- `confirmed`：当前事实与确认基线一致。
-
-规范原因包括 `unconfirmed`、`files_changed`、`derivation_changed` 和 `input_changed`。缺失文件、非法图或损坏的 schema 属于 validation issue，不会伪装成普通 review reason。
-
-### `kflow scan`
-
-执行同样的状态计算，并额外输出受管文件相对上次观察的 `added`、`modified`
-和 `deleted` 摘要。最新 fingerprint 只写入可删除、被 Git 忽略的
-`.kflow/cache/scan.json`；不会修改共享事实、Confirmation 或用户正文。
-
-```bash
-kflow scan
-kflow scan --json
-```
-
-### `kflow context <node>`
-
-只读查询一个 Node 当前最值得关注的结构信息：自身文件与状态、全部上游、全部下游，以及这些路径涉及的 Derivation 和显式作用描述。
-
-```bash
-kflow context architecture
-kflow context architecture --json
-```
-
-Context 只返回登记的文件路径和元数据，不读取或返回文件正文。
-
-省略 Node 并使用 `--affected` 可一次获取当前变化范围内的待检查 Node、原因与
-稳定顺序；无关的孤立 `unconfirmed` Node 不会混入结果：
-
-```bash
-kflow context --affected
-kflow context --affected --json
-```
-
-`context` 与 `explain` 的 JSON 统一使用 `node`、`status`、`reasons`、
-`relations`、`impact`、`review_order` 和 `issues` 顶层字段。
-
-完整的 Agent 修改、影响检查与逐 Node 确认示例见
-[`docs/agent-workflow.md`](docs/agent-workflow.md)；适配边界与机器协议分别见
-[`docs/agent-integration.md`](docs/agent-integration.md) 和
-[`docs/schema.md`](docs/schema.md)。
-
-### `kflow explain <node>`
-
-以指定 Node 为变化根解释下游影响。显式查询不依赖该 Node 当前是否已经出现 review reason；结果区分直接与间接影响，并在 JSON 中给出影响深度、来源根、经过的 Node/Derivation 路径、当前状态原因和稳定 `review_order`。
-
-```bash
-kflow explain architecture
-kflow explain architecture --json
-```
-
-`affected` 只表示可能需要检查，不表示 KFlow 已判断文件错误或要求修改。
-
-### `kflow review-order`
-
-从当前扫描中自动选择具有 `files_changed` 或 `derivation_changed` 的变化根，并按上游优先的稳定拓扑顺序展示仍需检查的相关 Node。
-
-```bash
-kflow review-order
-kflow review-order --json
-```
-
-该命令复用与 `explain` 相同的 impact 结果和排序语义；它不保存顺序，也不引入独立状态机。尚未确认的 Node 会保留 `unconfirmed`，但不会仅因未确认就自动成为变化根。
-
-### `kflow confirm <node>`
-
-确认一个已经实际检查过的 Node，记录它在当前文件、生产推导和直接输入条件下的版本基线。
+`confirm` 只作用于一个 Node。它表示该 Node 已在当前文件、当前生产推导和当前直接输入条件下完成检查：
 
 ```bash
 kflow confirm architecture
 ```
 
-一次只确认一个 Node，不会级联确认 sibling outputs 或下游，也不代表 KFlow 证明正文绝对正确。
+它不会级联确认 sibling outputs 或下游，也不是审批、真伪证明或永久绿色状态。
 
-### `kflow validate`
+## 人类输出与机器输出
 
-校验 schema v2 元数据、文件引用和图不变量，只报告问题，不修改用户正文。
+不带 `--json` 的输出面向人类，`kflow status` 会汇总项目状态、待检查数量、具体 Node、原因、相关路径和 validation issues。
 
-```bash
-kflow validate
-kflow validate --json
-```
-
-所有正式命令都支持 `--json`，机器结果只包含路径、拓扑、状态和校验信息，不包含正文、片段、自动摘要或拼装 Prompt。
-
-## 旧 v1 命令
-
-旧实现仍保留为行为基线，但不再是默认接口。需要显式使用 legacy 命令组：
+带 `--json` 的输出面向 Agent 与未来适配层：
 
 ```bash
-kflow legacy --help
-kflow legacy init
-kflow legacy create architecture
+kflow context --affected --json
 ```
 
-KFlow 不会自动迁移或转换旧 v1 项目。请不要在同一项目中混用正式 schema v2 命令和 legacy 命令。
+机器契约通过结果中的 `schema_version: 2` 标识兼容大版本。产品名称、命令层级和 Python 包不带版本号。
 
-## 元数据结构
-
-正式 CLI 使用 Git-native 的 schema v2 事实：
+## 元数据
 
 ```text
 .kflow/
@@ -212,17 +175,25 @@ KFlow 不会自动迁移或转换旧 v1 项目。请不要在同一项目中混�
 └── runtime/        # 临时数据，不进 Git
 ```
 
-Node、Derivation 和 Confirmation 应由 Git 跟踪；cache、runtime 与其他可重建数据不进入 Git。
-
-内部领域代码继续位于 `kflow/v2/`。这个目录名用于隔离领域实现和 schema 版本，不构成用户可见的 CLI 层级。
+Node、Derivation 和 Confirmation 是 Git 跟踪的共享事实；cache、runtime、锁和临时 observation 不是。
 
 ## 设计边界
 
-- Node 只管理一个或多个完整文件，不管理目录、章节、段落或代码片段。
-- KFlow 只维护显式 Derivation，不根据正文、文件名或主题相似性自动猜测关系。
-- KFlow 只提示哪些位置可能受影响，不判断正文真伪，也不自动修改下游。
-- Confirmation 是版本检查基线，不是审批、真伪证明或永久绿色状态。
-- Git 管理正文和历史，编辑器或 Agent 负责读取与修改，KFlow 负责知识拓扑和影响范围。
+- KFlow 只管理值得长期记住来源与影响的重要文件，不管理所有源码。
+- KFlow 只保存显式关系，不根据正文、文件名或相似性自动猜测 Derivation。
+- KFlow 只提示可能受影响的位置，不判断正文真伪，不自动修改下游。
+- Git 管理正文和历史；编辑器、Agent 或人类负责阅读与修改；KFlow 管理知识拓扑和影响范围。
+
+## 文档
+
+- [核心原则](docs/core-principles.md)
+- [正式架构](docs/architecture.md)
+- [机器契约](docs/schema.md)
+- [Agent 工作流](docs/agent-workflow.md)
+- [KFlow 使用指南](docs/kflow_skills.md)
+- [适配层说明](docs/agent-integration.md)
+
+历史设计材料集中在 `docs/history/`，仅用于追溯，不定义当前产品行为。
 
 ## 开发
 
@@ -232,7 +203,7 @@ ruff check .
 ruff format --check .
 ```
 
-项目当前零第三方运行时依赖；pytest 与 Ruff 仅用于开发。
+项目没有第三方运行时依赖；pytest 与 Ruff 仅用于开发。
 
 ## 许可证
 

@@ -1,2 +1,3 @@
-"""KFlow — Knowledge Flow CLI for DAG-based knowledge topology management."""
-__version__ = "0.1.0"
+"""KFlow — knowledge topology and impact management."""
+
+__version__ = "1.0.0"

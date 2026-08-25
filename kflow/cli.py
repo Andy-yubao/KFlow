@@ -1,297 +1,213 @@
-"""CLI entry point — argparse definition and command dispatch."""
+"""KFlow command-line interface."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
-from kflow.errors import KFlowError, handle_error
-from kflow.commands.init import init_project
-from kflow.commands.create import create_node
-from kflow.commands.list_cmd import list_nodes
-from kflow.commands.query import query_kflow
-from kflow.commands.derive import derive_node
-from kflow.commands.modify import modify_node
-from kflow.commands.confirm import confirm_node
-from kflow.commands.remove import remove_node
-from kflow.commands.context import context_node
-from kflow.commands.affect import affect_node
-from kflow.commands.validate import validate_project
-from kflow.commands.reindex import reindex_project
-from kflow.output import (
-    print_result,
-    print_list,
-    print_context,
-    print_affect,
-    print_query,
-    print_validate,
-)
-from kflow.v2.operations import add_derivation as add_v2_derivation
-from kflow.v2.operations import add_node as add_v2_node
-from kflow.v2.query import query_affected_context, query_context, query_impact
-from kflow.v2.scan import confirm as confirm_v2_node
-from kflow.v2.scan import scan as scan_v2_project
-from kflow.v2.scan import scan_and_sync as scan_and_sync_v2_project
-from kflow.v2.scan import validate as validate_v2_project
-from kflow.v2.storage import initialize_project as initialize_v2_project
 
-
-class DeriveInputAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        inputs = getattr(namespace, "derive_inputs", []) or []
-        cur = getattr(namespace, "_derive_cur", None)
-        if cur:
-            inputs.append(cur)
-        namespace._derive_cur = {"node": values}
-        namespace.derive_inputs = inputs
-
-
-class DeriveRoleAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        cur = getattr(namespace, "_derive_cur", None)
-        if cur is None:
-            parser.error("--role must follow --input")
-        cur["role"] = values
-
-
-class DeriveRoleDetailAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        cur = getattr(namespace, "_derive_cur", None)
-        if cur is None:
-            parser.error("--role-detail must follow --input")
-        cur["role_detail"] = values
+from kflow.core.operations import add_derivation, add_node
+from kflow.core.query import query_affected_context, query_context, query_impact
+from kflow.core.scan import confirm
+from kflow.core.scan import scan as scan_project
+from kflow.core.scan import scan_and_sync
+from kflow.core.scan import validate as validate_project
+from kflow.core.storage import initialize_project
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="kflow", description="Knowledge Flow CLI")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
-    sub = parser.add_subparsers(dest="command")
+    parser = argparse.ArgumentParser(
+        prog="kflow",
+        description=(
+            "Understand important project knowledge, what changed, and what to "
+            "review next."
+        ),
+        epilog=(
+            "Typical workflow: kflow status -> kflow context --affected -> "
+            "review files -> kflow confirm NODE"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Return the stable machine-readable result.",
+    )
+    sub = parser.add_subparsers(dest="command", title="commands", metavar="COMMAND")
 
-    p_init = sub.add_parser("init", help="Initialize KFlow metadata")
+    p_init = sub.add_parser(
+        "init",
+        help="Initialize KFlow in a project.",
+        description="Create Git-native KFlow metadata without scanning project files.",
+    )
     p_init.add_argument(
-        "path", nargs="?", default=".", help="Project path (default: .)"
+        "path",
+        nargs="?",
+        default=".",
+        help="Project path (default: current directory).",
     )
-    p_init.add_argument("--json", action="store_true", help="Output as JSON")
+    _add_json_option(p_init)
 
-    p_add = sub.add_parser("add-node", help="Register existing files as a Node")
-    p_add.add_argument("name")
-    p_add.add_argument("--file", action="append", required=True, dest="files")
-    p_add.add_argument("--json", action="store_true", help="Output as JSON")
+    p_add = sub.add_parser(
+        "add-node",
+        help="Register existing files as one Knowledge Node.",
+        description="Register one complete knowledge unit made from existing files.",
+    )
+    p_add.add_argument("name", help="Unique, human-readable Node name.")
+    p_add.add_argument(
+        "--file",
+        action="append",
+        required=True,
+        dest="files",
+        help="Project-relative file path; repeat for a multi-file Node.",
+    )
+    _add_json_option(p_add)
 
-    p_derive = sub.add_parser("derive", help="Connect existing Nodes")
-    p_derive.add_argument("--short", required=True)
-    p_derive.add_argument("--detail", default="")
+    p_derive = sub.add_parser(
+        "derive",
+        help="Connect existing Nodes with an explicit Derivation.",
+        description="Record one explainable, acyclic derivation between existing Nodes.",
+    )
     p_derive.add_argument(
-        "--input", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
+        "--short", required=True, help="Short derivation explanation."
+    )
+    p_derive.add_argument("--detail", default="", help="Optional detailed explanation.")
+    p_derive.add_argument(
+        "--input",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("NODE", "SHORT"),
+        help="Input Node and its role; repeat for additional inputs.",
     )
     p_derive.add_argument(
-        "--output", nargs=2, action="append", required=True, metavar=("NODE", "SHORT")
+        "--output",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("NODE", "SHORT"),
+        help="Output Node and its role; repeat for additional outputs.",
     )
-    p_derive.add_argument("--json", action="store_true", help="Output as JSON")
+    _add_json_option(p_derive)
 
-    p_status = sub.add_parser("status", help="Scan current impact status")
-    p_status.add_argument("--json", action="store_true", help="Output as JSON")
+    p_status = sub.add_parser(
+        "status",
+        help="Show project health and Nodes needing attention.",
+        description=(
+            "Explain the current project state, what needs review, and why. "
+            "This operation is read-only."
+        ),
+    )
+    _add_json_option(p_status)
 
-    p_scan = sub.add_parser("scan", help="Scan files and update scan observations")
-    p_scan.add_argument("--json", action="store_true", help="Output as JSON")
+    p_scan = sub.add_parser(
+        "scan",
+        help="Observe managed file changes and current Node status.",
+        description=(
+            "Compare managed files with the last observation and refresh only the "
+            "rebuildable local scan cache."
+        ),
+    )
+    _add_json_option(p_scan)
 
-    p_confirm = sub.add_parser("confirm", help="Confirm exactly one Node")
-    p_confirm.add_argument("node")
-    p_confirm.add_argument("--json", action="store_true", help="Output as JSON")
+    p_confirm = sub.add_parser(
+        "confirm",
+        help="Record that one Node has been reviewed.",
+        description=(
+            "Confirm exactly one Node under its current files, producer, and direct "
+            "input conditions. Confirmation never cascades."
+        ),
+    )
+    p_confirm.add_argument("node", help="Node ID, name, or registered file path.")
+    _add_json_option(p_confirm)
 
-    p_validate = sub.add_parser("validate", help="Validate KFlow facts")
-    p_validate.add_argument("--json", action="store_true", help="Output as JSON")
+    p_validate = sub.add_parser(
+        "validate",
+        help="Check metadata, file references, and graph invariants.",
+        description="Report structural issues without changing project files.",
+    )
+    _add_json_option(p_validate)
 
-    p_context = sub.add_parser("context", help="Show Node or project review context")
-    p_context.add_argument("node", nargs="?")
+    p_context = sub.add_parser(
+        "context",
+        help="Show why a Node or current review scope matters.",
+        description=(
+            "Show registered paths, relationships, impact, and review order without "
+            "returning file contents."
+        ),
+    )
+    p_context.add_argument(
+        "node", nargs="?", help="Node ID, name, or registered file path."
+    )
     p_context.add_argument(
         "--affected",
         action="store_true",
-        help="Show all currently affected Nodes and their review order",
+        help="Show the current affected scope and recommended review order.",
     )
-    p_context.add_argument("--json", action="store_true", help="Output as JSON")
+    _add_json_option(p_context)
 
-    p_explain = sub.add_parser("explain", help="Explain a Node's downstream impact")
-    p_explain.add_argument("node")
-    p_explain.add_argument("--json", action="store_true", help="Output as JSON")
+    p_explain = sub.add_parser(
+        "explain",
+        help="Explain a Node's downstream impact.",
+        description="Trace direct and indirect impact from one explicit change root.",
+    )
+    p_explain.add_argument("node", help="Node ID, name, or registered file path.")
+    _add_json_option(p_explain)
 
     p_review = sub.add_parser(
-        "review-order", help="Show the current recommended review order"
+        "review-order",
+        help="Show the recommended review order for current changes.",
+        description="List affected Nodes in a stable, upstream-first order.",
     )
-    p_review.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_legacy = sub.add_parser("legacy", help="Use the legacy v1 command interface")
-    legacy_sub = p_legacy.add_subparsers(dest="legacy_command", required=True)
-    _add_legacy_parsers(legacy_sub)
+    _add_json_option(p_review)
 
     return parser
 
 
-def _add_legacy_parsers(sub) -> None:
-    p_init = sub.add_parser("init", help="[legacy] Initialize a v1 project")
-    p_init.add_argument("path", nargs="?", default=".")
-    p_init.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_create = sub.add_parser("create", help="[legacy] Create a source node")
-    p_create.add_argument("name", help="Node name (corresponds to knowledge/<name>.md)")
-    p_create.add_argument(
-        "--no-file", action="store_true", help="Create without a markdown file"
+def _add_json_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Return the stable machine-readable result.",
     )
-    p_create.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_list = sub.add_parser("list", help="[legacy] List all nodes")
-    p_list.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_query = sub.add_parser("query", help="[legacy] Search nodes and derivations")
-    p_query.add_argument("word", help="Search term")
-    p_query.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_derive = sub.add_parser("derive", help="[legacy] Create a v1 derivation")
-    p_derive.add_argument(
-        "--input", action=DeriveInputAction, dest="derive_inputs", default=[]
-    )
-    p_derive.add_argument("--role", action=DeriveRoleAction)
-    p_derive.add_argument("--role-detail", action=DeriveRoleDetailAction)
-    p_derive.add_argument("--output", dest="derive_output_name")
-    p_derive.add_argument("--method", dest="derive_method")
-    p_derive.add_argument("--method-detail", dest="derive_method_detail")
-    p_derive.add_argument("--summary", dest="derive_summary")
-    p_derive.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_modify = sub.add_parser("modify", help="[legacy] Mark a node as modified")
-    p_modify.add_argument("name", help="Node name")
-    p_modify.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_confirm = sub.add_parser("confirm", help="[legacy] Confirm a v1 node")
-    p_confirm.add_argument("name")
-    p_confirm.add_argument("--cascade", action="store_true")
-    p_confirm.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_remove = sub.add_parser("remove", help="[legacy] Remove a node")
-    p_remove.add_argument("name")
-    p_remove.add_argument("--force", action="store_true")
-    p_remove.add_argument("--keep-file", action="store_true")
-    p_remove.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_context = sub.add_parser("context", help="[legacy] Show upstream context")
-    p_context.add_argument("name")
-    p_context.add_argument("--depth", type=int, default=None)
-    p_context.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_affect = sub.add_parser("affect", help="[legacy] Show downstream impact")
-    p_affect.add_argument("name")
-    p_affect.add_argument("--depth", type=int, default=None)
-    p_affect.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_validate = sub.add_parser("validate", help="[legacy] Run v1 integrity checks")
-    p_validate.add_argument("--json", action="store_true", help="Output as JSON")
-
-    p_reindex = sub.add_parser("reindex", help="[legacy] Rebuild the v1 index")
-    p_reindex.add_argument("--json", action="store_true", help="Output as JSON")
 
 
-def main(argv=None):
+def main(argv=None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
-        sys.exit(1)
+        raise SystemExit(1)
 
     try:
         dispatch(args)
-    except KFlowError as e:
-        handle_error(e, json_output=getattr(args, "json", False))
-    except Exception as e:
+    except Exception as error:
         if getattr(args, "json", False):
-            import json as _json
-
             print(
-                _json.dumps({"ok": False, "error": str(e), "type": "UnexpectedError"})
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": str(error),
+                        "type": type(error).__name__,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
             )
         else:
-            print(f"Error: {e}", file=sys.stderr)
-        sys.exit(2)
+            print(f"KFlow could not complete the command: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
 
 
-def dispatch(args):
-    """Route to the appropriate command handler."""
-    if args.command == "legacy":
-        dispatch_legacy(args)
-    else:
-        dispatch_current(args)
-
-
-def dispatch_legacy(args):
-    """Route explicitly requested legacy v1 commands."""
-    if args.legacy_command == "init":
-        path = Path(args.path).resolve()
-        init_project(path)
-        print(f"Initialized KFlow project at {path}")
-    elif args.legacy_command == "create":
-        result = create_node(Path.cwd(), args.name, no_file=args.no_file)
-        print_result(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "list":
-        result = list_nodes(Path.cwd())
-        print_list(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "query":
-        result = query_kflow(Path.cwd(), args.word)
-        print_query(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "derive":
-        cur = getattr(args, "_derive_cur", None)
-        if cur:
-            args.derive_inputs.append(cur)
-        result = derive_node(
-            Path.cwd(),
-            inputs=args.derive_inputs,
-            output={
-                "name": args.derive_output_name,
-                "method": args.derive_method,
-                "method_detail": args.derive_method_detail or "",
-            },
-            summary=args.derive_summary,
-        )
-        print_result(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "modify":
-        result = modify_node(Path.cwd(), args.name)
-        print_result(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "confirm":
-        result = confirm_node(
-            Path.cwd(), args.name, cascade=getattr(args, "cascade", False)
-        )
-        print_result(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "remove":
-        result = remove_node(
-            Path.cwd(),
-            args.name,
-            force=getattr(args, "force", False),
-            keep_file=getattr(args, "keep_file", False),
-        )
-        print_result(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "context":
-        result = context_node(Path.cwd(), args.name, depth=args.depth)
-        print_context(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "affect":
-        result = affect_node(Path.cwd(), args.name, depth=args.depth)
-        print_affect(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "validate":
-        result = validate_project(Path.cwd())
-        print_validate(result, json_output=getattr(args, "json", False))
-    elif args.legacy_command == "reindex":
-        result = reindex_project(Path.cwd())
-        print_result(result, json_output=getattr(args, "json", False))
-    else:
-        raise ValueError(f"unknown legacy command: {args.legacy_command}")
-
-
-def dispatch_current(args):
-    """Route the default schema-v2 command interface."""
+def dispatch(args) -> None:
+    """Run one official KFlow command."""
     root = Path.cwd()
     if args.command == "init":
         root = Path(args.path).resolve()
-        initialize_v2_project(root)
+        initialize_project(root)
         result = {"ok": True, "schema_version": 2, "root": str(root)}
     elif args.command == "add-node":
-        node = add_v2_node(root, args.name, tuple(args.files))
+        node = add_node(root, args.name, tuple(args.files))
         result = {
             "ok": True,
             "schema_version": 2,
@@ -302,7 +218,7 @@ def dispatch_current(args):
             },
         }
     elif args.command == "derive":
-        derivation = add_v2_derivation(
+        derivation = add_derivation(
             root,
             args.short,
             args.detail,
@@ -319,12 +235,12 @@ def dispatch_current(args):
             },
         }
     elif args.command == "status":
-        result = _v2_status_result(root)
+        result = _status_result(root)
     elif args.command == "scan":
-        result = _v2_scan_result(root)
+        result = _scan_result(root)
     elif args.command == "confirm":
-        before, after = confirm_v2_node(root, args.node)
-        current = _v2_status_result(root)
+        before, after = confirm(root, args.node)
+        current = _status_result(root)
         result = {
             "ok": True,
             "schema_version": 2,
@@ -336,7 +252,7 @@ def dispatch_current(args):
             ],
         }
     elif args.command == "validate":
-        issues = validate_v2_project(root)
+        issues = validate_project(root)
         result = {
             "ok": not issues,
             "schema_version": 2,
@@ -364,15 +280,14 @@ def dispatch_current(args):
         result = query_impact(root)
     else:
         raise ValueError(f"unknown command: {args.command}")
-    _print_v2(result, getattr(args, "json", False), args.command)
+    _print_result(result, getattr(args, "json", False), args.command)
 
 
-def _v2_status_result(root: Path) -> dict:
-    scanned = scan_v2_project(root)
-    return _v2_status_from_scan(scanned)
+def _status_result(root: Path) -> dict:
+    return _status_from_scan(scan_project(root))
 
 
-def _v2_status_from_scan(scanned) -> dict:
+def _status_from_scan(scanned) -> dict:
     nodes = []
     for node_id in scanned.graph.topological_order():
         node = scanned.graph.nodes[node_id]
@@ -402,9 +317,9 @@ def _v2_status_from_scan(scanned) -> dict:
     }
 
 
-def _v2_scan_result(root: Path) -> dict:
-    summary = scan_and_sync_v2_project(root)
-    status = _v2_status_from_scan(summary.scanned)
+def _scan_result(root: Path) -> dict:
+    summary = scan_and_sync(root)
+    status = _status_from_scan(summary.scanned)
     return {
         **status,
         "changes": {
@@ -425,34 +340,103 @@ def _v2_scan_result(root: Path) -> dict:
     }
 
 
-def _print_v2(result: dict, json_output: bool, command: str = "") -> None:
+def _print_result(result: dict, json_output: bool, command: str) -> None:
     if json_output:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return
-    if command == "context":
-        _print_v2_context(result)
-        return
-    if command == "explain":
-        _print_v2_explanation(result)
-        return
-    if command == "review-order":
-        _print_v2_review_order(result)
-        return
-    if command == "scan":
-        _print_v2_scan(result)
-        return
-    if "nodes" in result:
-        for node in result["nodes"]:
-            reasons = ", ".join(node["reasons"]) or "none"
-            print(f"{node['name']}: {node['status']} ({reasons})")
-        return
-    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    printers = {
+        "status": _print_status,
+        "scan": _print_scan,
+        "context": _print_context,
+        "explain": _print_explanation,
+        "review-order": _print_review_order,
+        "validate": _print_validation,
+    }
+    if command in printers:
+        printers[command](result)
+    elif command == "init":
+        print(f"Initialized KFlow at {result['root']}")
+    elif command == "add-node":
+        node = result["node"]
+        print(f"Registered Node {node['name']} ({node['id']})")
+        for path in node["files"]:
+            print(f"- {path}")
+    elif command == "derive":
+        derivation = result["derivation"]
+        print(f"Created Derivation {derivation['id']}")
+        print(f"Inputs: {', '.join(derivation['inputs'])}")
+        print(f"Outputs: {', '.join(derivation['outputs'])}")
+    elif command == "confirm":
+        print(f"Confirmed Node {result['node']}")
+        print(f"Remaining Nodes needing review: {len(result['remaining_review'])}")
 
 
-def _print_v2_context(result: dict) -> None:
+def _print_status(result: dict) -> None:
+    nodes = result["nodes"]
+    issues = result["issues"]
+    needs_review = [node for node in nodes if node["reasons"]]
+    current = len(nodes) - len(needs_review)
+    state = (
+        "blocked by validation issues"
+        if issues
+        else "attention required"
+        if needs_review
+        else "current"
+    )
+
+    print("KFlow project status")
+    print(f"State: {state}")
+    print(
+        f"Summary: {len(nodes)} Nodes; {current} current; "
+        f"{len(needs_review)} need review; {len(issues)} issues"
+    )
+    print("\nNeeds attention:")
+    if not needs_review:
+        print("none")
+    for node in needs_review:
+        reasons = ", ".join(node["reasons"])
+        print(f"- {node['name']} [{reasons}]")
+        print(f"  Why: {_explain_reasons(node['reasons'])}")
+        relevant_files = node["changed_files"] or node["files"]
+        print(f"  Files: {', '.join(relevant_files)}")
+
+    print("\nValidation issues:")
+    _print_issues(issues)
+    if needs_review and not issues:
+        print("\nNext: run 'kflow context --affected' for impact and review order.")
+
+
+def _explain_reasons(reasons: list[str]) -> str:
+    descriptions = {
+        "unconfirmed": "no review baseline has been recorded",
+        "files_changed": "registered files changed since the last confirmation",
+        "derivation_changed": "the producing Derivation changed",
+        "input_changed": "one or more direct input Nodes changed",
+    }
+    return "; ".join(descriptions.get(reason, reason) for reason in reasons)
+
+
+def _print_validation(result: dict) -> None:
+    if result["ok"]:
+        print("KFlow metadata is valid.")
+        return
+    print("KFlow metadata has validation issues:")
+    _print_issues(result["issues"])
+
+
+def _print_issues(issues: list[dict]) -> None:
+    if not issues:
+        print("none")
+    for issue in issues:
+        references = ", ".join(issue.get("references", []))
+        suffix = f" ({references})" if references else ""
+        print(f"- {issue['code']}: {issue['message']}{suffix}")
+
+
+def _print_context(result: dict) -> None:
     node = result["node"]
     if node is None:
-        _print_v2_affected_context(result)
+        _print_affected_context(result)
         return
     relations = result["relations"]
     affected = result["impact"]["affected_nodes"]
@@ -470,7 +454,7 @@ def _print_v2_context(result: dict) -> None:
     if not result["reasons"]:
         print("none")
     for reason in result["reasons"]:
-        print(reason)
+        print(f"{reason}: {_explain_reasons([reason])}")
     print("\nUpstream Dependencies:")
     _print_node_names(relations["upstream"])
     print("\nDownstream Impact:")
@@ -482,9 +466,11 @@ def _print_v2_context(result: dict) -> None:
         print(f"{derivation['id']}: {derivation['short']}")
     print("\nRecommended Review Order:")
     _print_named_order(result["review_order"], names)
+    print("\nValidation Issues:")
+    _print_issues(result["issues"])
 
 
-def _print_v2_explanation(result: dict) -> None:
+def _print_explanation(result: dict) -> None:
     roots = result["impact"]["changed_nodes"]
     affected = result["impact"]["affected_nodes"]
     names = {node["id"]: node["name"] for node in (*roots, *affected)}
@@ -503,11 +489,15 @@ def _print_v2_explanation(result: dict) -> None:
     _print_impacts(indirect, names)
     print("\nRecommended review order:")
     _print_review_items(result)
+    print("\nValidation issues:")
+    _print_issues(result["issues"])
 
 
-def _print_v2_review_order(result: dict) -> None:
+def _print_review_order(result: dict) -> None:
     print("Recommended review order:")
     _print_review_items(result)
+    print("\nValidation issues:")
+    _print_issues(result["issues"])
 
 
 def _print_node_names(nodes: list[dict]) -> None:
@@ -537,7 +527,7 @@ def _print_review_items(result: dict) -> None:
     _print_named_order(result["review_order"], nodes)
 
 
-def _print_v2_affected_context(result: dict) -> None:
+def _print_affected_context(result: dict) -> None:
     roots = result["impact"]["changed_nodes"]
     affected = result["impact"]["affected_nodes"]
     names = {node["id"]: node["name"] for node in (*roots, *affected)}
@@ -551,21 +541,21 @@ def _print_v2_affected_context(result: dict) -> None:
     for item in roots:
         reasons = ", ".join(item["reasons"]) or "none"
         print(f"{item['name']}: {reasons}")
+    print("\nValidation Issues:")
+    _print_issues(result["issues"])
 
 
-def _print_v2_scan(result: dict) -> None:
-    print("File changes:")
+def _print_scan(result: dict) -> None:
+    print("Managed file changes:")
     found = False
     for label in ("added", "modified", "deleted"):
         for path in result["changes"][label]:
             found = True
-            print(f"{label}: {path}")
+            print(f"- {label}: {path}")
     if not found:
         print("none")
-    print("\nNode status:")
-    for node in result["nodes"]:
-        reasons = ", ".join(node["reasons"]) or "none"
-        print(f"{node['name']}: {node['status']} ({reasons})")
+    print("")
+    _print_status(result)
 
 
 def _print_named_order(order: list[str], names: dict[str, str]) -> None:

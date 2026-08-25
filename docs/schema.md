@@ -1,7 +1,7 @@
-# KFlow Schema v2
+# KFlow 机器契约
 
 本文冻结 KFlow 面向 CLI、Agent 和后续适配层的只读查询协议。当前公共查询入口是
-`kflow.v2.query` 中的 `query_context`、`query_impact` 和
+`kflow.core.query` 中的 `query_context`、`query_impact` 和
 `query_affected_context`；正式 CLI 的 `context`、`explain` 与
 `review-order` 复用这些入口。
 
@@ -162,7 +162,7 @@ Derivation 的 ID、显式语义、inputs、outputs 或各角色描述变化都�
 
 ## 4. 兼容性规则
 
-- schema v2 内保持上述顶层字段、类型、错误封套和确定性排序；
+- 当前 `schema_version: 2` 内保持上述顶层字段、类型、错误封套和确定性排序；
 - 新增破坏现有调用方的必填字段、删除字段或改变字段语义，需要提升
   `schema_version`；
 - 展示层可以省略视觉上无关的信息，但 `--json` 和公共 Query API 必须遵守本协议；

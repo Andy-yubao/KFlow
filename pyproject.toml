@@ -1,6 +1,6 @@
 [project]
 name = "kflow"
-version = "0.1.0"
+version = "1.0.0"
 description = "Knowledge Flow — DAG-based knowledge topology management CLI"
 requires-python = ">=3.11"
 dependencies = []

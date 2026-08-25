@@ -1,130 +1,128 @@
-from kflow.graph import bfs_upstream, bfs_downstream, has_cycle, would_create_cycle, toposort_nodes
-from kflow.models import Index, IndexNode, IndexDerivation
+import pytest
+
+from kflow.core.graph import GraphValidationError, KnowledgeGraph
+from kflow.core.models import (
+    Derivation,
+    DerivationInput,
+    DerivationOutput,
+    KnowledgeNode,
+)
 
 
-def make_index(nodes_spec, derivations_spec):
-    """Helper to build an Index from concise specs.
+def node(
+    node_id: str, name: str | None = None, file: str | None = None
+) -> KnowledgeNode:
+    suffix = node_id.removeprefix("nd_")
+    return KnowledgeNode(
+        id=node_id,
+        name=name or suffix,
+        files=(file or f"docs/{suffix}.md",),
+    )
 
-    nodes_spec: list of (id, name, derivations_as_input, derivations_as_output)
-    derivations_spec: list of (id, summary, [(input_node_id, role)], output_node_id, method)
-    """
-    nodes = {}
-    derivations = {}
-    for (nid, name, d_as_in, d_as_out) in nodes_spec:
-        nodes[nid] = IndexNode(name=name, file=f"knowledge/{name}.md", status="green",
-                               derivations_as_input=d_as_in, derivations_as_output=d_as_out)
-    for (did, summary, inputs, output_id, method) in derivations_spec:
-        derivations[did] = IndexDerivation(
-            summary=summary,
-            inputs=[{"node": nid, "role": role} for (nid, role) in inputs],
-            output={"node": output_id, "method": method},
+
+def derive(
+    derivation_id: str, inputs: tuple[str, ...], outputs: tuple[str, ...]
+) -> Derivation:
+    return Derivation(
+        id=derivation_id,
+        short="形成下游知识",
+        detail="",
+        inputs=tuple(
+            DerivationInput(node_id, f"使用 {node_id}", "") for node_id in inputs
+        ),
+        outputs=tuple(
+            DerivationOutput(node_id, f"形成 {node_id}", "") for node_id in outputs
+        ),
+    )
+
+
+def issue_codes(error: GraphValidationError) -> set[str]:
+    return {issue.code for issue in error.issues}
+
+
+def test_graph_supports_source_nodes_and_many_to_many_derivations():
+    nodes = [node("nd_a"), node("nd_b"), node("nd_c"), node("nd_d")]
+    graph = KnowledgeGraph.build(
+        nodes,
+        [derive("dv_design", ("nd_a", "nd_b"), ("nd_c", "nd_d"))],
+    )
+
+    assert graph.producer_of("nd_a") is None
+    assert graph.producer_of("nd_d").id == "dv_design"
+    assert graph.sibling_outputs("nd_a") == ()
+    assert graph.sibling_outputs("nd_c") == ("nd_d",)
+    assert graph.downstream("nd_a") == {"nd_a": 0, "nd_c": 1, "nd_d": 1}
+    assert graph.upstream("nd_d") == ("nd_a", "nd_b", "nd_d")
+
+
+def test_graph_allows_orphan_nodes_but_rejects_multiple_producers():
+    orphan = node("nd_orphan")
+    graph = KnowledgeGraph.build([orphan], [])
+    assert graph.producer_of("nd_orphan") is None
+
+    nodes = [node("nd_a"), node("nd_b"), node("nd_shared")]
+    with pytest.raises(GraphValidationError) as exc:
+        KnowledgeGraph.build(
+            nodes,
+            [
+                derive("dv_one", ("nd_a",), ("nd_shared",)),
+                derive("dv_two", ("nd_b",), ("nd_shared",)),
+            ],
         )
-    return Index(nodes=nodes, derivations=derivations)
+    assert "multiple_producers" in issue_codes(exc.value)
 
 
-class TestBfsUpstream:
-    def test_source_node_returns_self(self):
-        idx = make_index(
-            [("nd_a", "arch", [], [])],
-            [],
-        )
-        result = bfs_upstream(idx, "nd_a")
-        assert result == ["nd_a"]
+def test_graph_requires_unique_names_and_file_ownership():
+    nodes = [
+        node("nd_a", name="same", file="docs/shared.md"),
+        node("nd_b", name="same", file="docs/shared.md"),
+    ]
 
-    def test_single_derivation_chain(self):
-        idx = make_index(
-            [("nd_a", "arch", [], []),
-             ("nd_b", "plan", [], ["dv_x"])],
-            [("dv_x", "derive plan", [("nd_a", "base")], "nd_b", "method")],
-        )
-        result = bfs_upstream(idx, "nd_b")
-        assert result[0] == "nd_a"
-        assert result[-1] == "nd_b"
-        assert len(result) == 2
+    with pytest.raises(GraphValidationError) as exc:
+        KnowledgeGraph.build(nodes, [])
 
-    def test_two_sources_one_derivation(self):
-        idx = make_index(
-            [("nd_a", "a", [], []),
-             ("nd_b", "b", [], []),
-             ("nd_c", "c", [], ["dv_x"])],
-            [("dv_x", "combine", [("nd_a", "r1"), ("nd_b", "r2")], "nd_c", "m")],
-        )
-        result = bfs_upstream(idx, "nd_c")
-        assert set(result[:2]) == {"nd_a", "nd_b"}
-        assert result[2] == "nd_c"
+    codes = issue_codes(exc.value)
+    assert "duplicate_node_name" in codes
+    assert "duplicate_file_owner" in codes
 
 
-class TestBfsDownstream:
-    def test_leaf_node_returns_self(self):
-        idx = make_index(
-            [("nd_a", "arch", [], [])],
-            [],
-        )
-        result = bfs_downstream(idx, "nd_a")
-        assert result == {"nd_a": 0}
+def test_graph_rejects_missing_references():
+    a = node("nd_a")
+    bad = derive("dv_bad", ("nd_missing",), ("nd_a",))
 
-    def test_chain_downstream(self):
-        idx = make_index(
-            [("nd_a", "a", ["dv_x"], []),
-             ("nd_b", "b", ["dv_y"], ["dv_x"]),
-             ("nd_c", "c", [], ["dv_y"])],
-            [("dv_x", "x", [("nd_a", "r")], "nd_b", "m"),
-             ("dv_y", "y", [("nd_b", "r")], "nd_c", "m")],
-        )
-        result = bfs_downstream(idx, "nd_a")
-        assert result["nd_a"] == 0
-        assert result["nd_b"] == 1
-        assert result["nd_c"] == 2
+    with pytest.raises(GraphValidationError) as exc:
+        KnowledgeGraph.build([a], [bad])
+
+    assert "missing_input_node" in issue_codes(exc.value)
 
 
-class TestHasCycle:
-    def test_dag_no_cycle(self):
-        idx = make_index(
-            [("nd_a", "a", ["dv_x"], []),
-             ("nd_b", "b", [], ["dv_x"])],
-            [("dv_x", "x", [("nd_a", "r")], "nd_b", "m")],
-        )
-        assert has_cycle(idx) is False
+def test_graph_rejects_cycles():
+    nodes = [node("nd_a"), node("nd_b")]
+    derivations = [
+        derive("dv_ab", ("nd_a",), ("nd_b",)),
+        derive("dv_ba", ("nd_b",), ("nd_a",)),
+    ]
 
-    def test_cycle_detected(self):
-        idx = make_index(
-            [("nd_a", "a", [], ["dv_y"]),
-             ("nd_b", "b", [], ["dv_x"])],
-            [("dv_x", "x", [("nd_a", "r")], "nd_b", "m"),
-             ("dv_y", "y", [("nd_b", "r")], "nd_a", "m")],
-        )
-        assert has_cycle(idx) is True
+    with pytest.raises(GraphValidationError) as exc:
+        KnowledgeGraph.build(nodes, derivations)
+
+    assert "cycle" in issue_codes(exc.value)
 
 
-class TestWouldCreateCycle:
-    def test_no_cycle_new_edge(self):
-        idx = make_index(
-            [("nd_a", "a", [], []),
-             ("nd_b", "b", [], [])],
-            [],
-        )
-        assert would_create_cycle(idx, ["nd_a"], "nd_b") is False
+def test_topological_order_is_stable_for_sources_and_sibling_outputs():
+    nodes = [node("nd_d"), node("nd_c"), node("nd_b"), node("nd_a")]
+    graph = KnowledgeGraph.build(
+        nodes,
+        [derive("dv_design", ("nd_a", "nd_b"), ("nd_c", "nd_d"))],
+    )
 
-    def test_cycle_detected_new_edge(self):
-        # nd_a → dv_x → nd_b. Adding nd_b → nd_a would create cycle
-        idx = make_index(
-            [("nd_a", "a", [], []),
-             ("nd_b", "b", [], ["dv_x"])],
-            [("dv_x", "x", [("nd_a", "r")], "nd_b", "m")],
-        )
-        assert would_create_cycle(idx, ["nd_b"], "nd_a") is True
+    assert graph.topological_order() == ("nd_a", "nd_b", "nd_c", "nd_d")
 
 
-class TestToposortNodes:
-    def test_simple_chain(self):
-        idx = make_index(
-            [("nd_a", "a", [], []),
-             ("nd_b", "b", [], ["dv_x"]),
-             ("nd_c", "c", [], ["dv_y"])],
-            [("dv_x", "x", [("nd_a", "r")], "nd_b", "m"),
-             ("dv_y", "y", [("nd_b", "r")], "nd_c", "m")],
-        )
-        result = toposort_nodes(idx, ["nd_a", "nd_b", "nd_c"])
-        assert result[0] == "nd_a"
-        assert result[1] == "nd_b"
-        assert result[2] == "nd_c"
+def test_graph_queries_reject_unknown_nodes():
+    graph = KnowledgeGraph.build([node("nd_a")], [])
+
+    with pytest.raises(KeyError, match="unknown node"):
+        graph.producer_of("nd_missing")
+    with pytest.raises(KeyError, match="unknown node"):
+        graph.consumer_derivations("nd_missing")

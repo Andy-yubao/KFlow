@@ -1,111 +1,193 @@
-from dataclasses import asdict
-from kflow.models import Node, InputSpec, OutputSpec, Derivation, IndexNode, IndexDerivation, Index
+import pytest
+
+from kflow.core.models import (
+    ConfirmationFile,
+    ConfirmationInput,
+    ConfirmationProducer,
+    Derivation,
+    DerivationInput,
+    DerivationOutput,
+    Fingerprint,
+    KnowledgeNode,
+    NodeConfirmation,
+)
 
 
-class TestNode:
-    def test_create_node_with_defaults(self):
-        n = Node(id="nd_a1b2c3", name="architecture", file="knowledge/architecture.md", status="green")
-        assert n.id == "nd_a1b2c3"
-        assert n.name == "architecture"
-        assert n.file == "knowledge/architecture.md"
-        assert n.status == "green"
-        assert n.derivations_as_input == []
-        assert n.derivations_as_output == []
+SHA_A = "a" * 64
+SHA_B = "b" * 64
 
-    def test_create_node_no_file(self):
-        n = Node(id="nd_abc123", name="concept", file=None, status="green")
-        assert n.file is None
 
-    def test_create_node_with_derivation_refs(self):
-        n = Node(
-            id="nd_x1y2z3", name="factbase", file="knowledge/factbase.md", status="yellow",
-            derivations_as_input=["dv_d4e5f6"], derivations_as_output=["dv_m3n4o5"],
+def test_node_accepts_multiple_files():
+    node = KnowledgeNode(
+        id="nd_architecture",
+        name="architecture",
+        files=("docs/architecture.md", "docs/architecture.svg"),
+    )
+
+    assert node.files == ("docs/architecture.md", "docs/architecture.svg")
+
+
+def test_domain_collections_are_normalized_to_immutable_tuples():
+    node = KnowledgeNode(id="nd_a", name="a", files=["docs/a.md"])
+    derivation = Derivation(
+        id="dv_ab",
+        short="形成 B",
+        detail="",
+        inputs=[DerivationInput("nd_a", "使用 A", "")],
+        outputs=[DerivationOutput("nd_b", "形成 B", "")],
+    )
+
+    assert node.files == ("docs/a.md",)
+    assert derivation.inputs == (DerivationInput("nd_a", "使用 A", ""),)
+    assert derivation.outputs == (DerivationOutput("nd_b", "形成 B", ""),)
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        (),
+        ("/absolute.md",),
+        ("C:/absolute.md",),
+        ("docs\\windows.md",),
+        ("docs/../outside.md",),
+        ("docs/a.md", "docs/a.md"),
+    ],
+)
+def test_node_rejects_invalid_file_sets(files):
+    with pytest.raises(ValueError):
+        KnowledgeNode(id="nd_a", name="a", files=files)
+
+
+def test_derivation_supports_multiple_inputs_and_outputs():
+    derivation = Derivation(
+        id="dv_design",
+        short="形成设计",
+        detail="",
+        inputs=(
+            DerivationInput("nd_a", "使用 A", ""),
+            DerivationInput("nd_b", "使用 B", ""),
+        ),
+        outputs=(
+            DerivationOutput("nd_c", "形成 C", ""),
+            DerivationOutput("nd_d", "形成 D", ""),
+        ),
+    )
+
+    assert tuple(item.node for item in derivation.inputs) == ("nd_a", "nd_b")
+    assert tuple(item.node for item in derivation.outputs) == ("nd_c", "nd_d")
+
+
+@pytest.mark.parametrize("empty_side", ["inputs", "outputs"])
+def test_derivation_rejects_empty_endpoints(empty_side):
+    kwargs = {
+        "id": "dv_ab",
+        "short": "形成 B",
+        "detail": "",
+        "inputs": (DerivationInput("nd_a", "使用 A", ""),),
+        "outputs": (DerivationOutput("nd_b", "形成 B", ""),),
+    }
+    kwargs[empty_side] = ()
+
+    with pytest.raises(ValueError):
+        Derivation(**kwargs)
+
+
+def test_derivation_rejects_duplicate_or_overlapping_endpoints():
+    with pytest.raises(ValueError):
+        Derivation(
+            id="dv_duplicate",
+            short="重复输入",
+            detail="",
+            inputs=(
+                DerivationInput("nd_a", "输入 A", ""),
+                DerivationInput("nd_a", "输入 A", ""),
+            ),
+            outputs=(DerivationOutput("nd_b", "输出 B", ""),),
         )
-        assert len(n.derivations_as_input) == 1
-        assert "dv_d4e5f6" in n.derivations_as_input
 
-    def test_node_asdict(self):
-        n = Node(id="nd_a1b2c3", name="architecture", file="knowledge/architecture.md", status="green")
-        d = asdict(n)
-        assert d["id"] == "nd_a1b2c3"
-        assert d["status"] == "green"
-        assert d["derivations_as_input"] == []
-
-    def test_node_from_dict(self):
-        d = {"id": "nd_a1b2c3", "name": "arch", "file": "knowledge/arch.md", "status": "green",
-             "derivations_as_input": [], "derivations_as_output": []}
-        n = Node(**d)
-        assert n.name == "arch"
+    with pytest.raises(ValueError):
+        Derivation(
+            id="dv_overlap",
+            short="自环",
+            detail="",
+            inputs=(DerivationInput("nd_a", "输入 A", ""),),
+            outputs=(DerivationOutput("nd_a", "输出 A", ""),),
+        )
 
 
-class TestInputSpec:
-    def test_create_input_spec(self):
-        inp = InputSpec(node="nd_a1b2c3", role="提供框架", role_detail="详细框架说明")
-        assert inp.node == "nd_a1b2c3"
-        assert inp.role == "提供框架"
-        assert inp.role_detail == "详细框架说明"
+def test_all_derivation_detail_fields_accept_canonical_empty_string():
+    derivation = Derivation(
+        id="dv_ab",
+        short="形成 B",
+        detail="",
+        inputs=(DerivationInput("nd_a", "使用 A", ""),),
+        outputs=(DerivationOutput("nd_b", "形成 B", ""),),
+    )
+
+    assert derivation.detail == ""
+    assert derivation.inputs[0].detail == ""
+    assert derivation.outputs[0].detail == ""
 
 
-class TestOutputSpec:
-    def test_create_output_spec(self):
-        out = OutputSpec(node="nd_m3n4o5", method="组织数据", method_detail="详细组织说明")
-        assert out.method == "组织数据"
+@pytest.mark.parametrize("level", ["derivation", "input", "output"])
+def test_all_derivation_short_fields_require_non_empty_text(level):
+    input_short = " " if level == "input" else "使用 A"
+    output_short = " " if level == "output" else "形成 B"
+
+    with pytest.raises(ValueError):
+        Derivation(
+            id="dv_ab",
+            short=" " if level == "derivation" else "形成 B",
+            detail="",
+            inputs=(DerivationInput("nd_a", input_short, ""),),
+            outputs=(DerivationOutput("nd_b", output_short, ""),),
+        )
 
 
-class TestDerivation:
-    def test_create_derivation(self):
-        inp = InputSpec(node="nd_a1b2c3", role="提供框架", role_detail="详细说明")
-        out = OutputSpec(node="nd_m3n4o5", method="组织数据", method_detail="详细方法说明")
-        dv = Derivation(id="dv_d4e5f6", summary="构建事实库", inputs=[inp], output=out)
-        assert dv.id == "dv_d4e5f6"
-        assert len(dv.inputs) == 1
-        assert dv.summary == "构建事实库"
+def test_fingerprint_requires_labelled_lowercase_sha256():
+    assert Fingerprint("sha256", SHA_A).value == SHA_A
 
-    def test_derivation_asdict(self):
-        inp = InputSpec(node="nd_a1b2c3", role="r", role_detail="rd")
-        out = OutputSpec(node="nd_m3n4o5", method="m", method_detail="md")
-        dv = Derivation(id="dv_d4e5f6", summary="s", inputs=[inp], output=out)
-        d = asdict(dv)
-        assert d["inputs"][0]["role"] == "r"
-        assert d["output"]["method"] == "m"
+    with pytest.raises(ValueError):
+        Fingerprint("sha1", SHA_A)
+    with pytest.raises(ValueError):
+        Fingerprint("sha256", SHA_A.upper())
 
 
-class TestIndex:
-    def test_empty_index(self):
-        idx = Index(nodes={}, derivations={})
-        assert len(idx.nodes) == 0
-        assert len(idx.derivations) == 0
+def test_source_confirmation_records_exactly_one_node_without_producer_inputs():
+    confirmation = NodeConfirmation(
+        node="nd_a",
+        files=(ConfirmationFile("docs/a.md", Fingerprint("sha256", SHA_A)),),
+        files_fingerprint=Fingerprint("sha256", SHA_B),
+        producing_derivation=None,
+        inputs=(),
+        effective_version=SHA_A,
+    )
 
-    def test_index_with_entries(self):
-        nodes = {"nd_a": IndexNode(name="arch", file="knowledge/arch.md", status="green",
-                                    derivations_as_input=[], derivations_as_output=[])}
-        derivations = {"dv_x": IndexDerivation(summary="s", inputs=[], output={})}
-        idx = Index(nodes=nodes, derivations=derivations)
-        assert idx.nodes["nd_a"].name == "arch"
+    assert confirmation.node == "nd_a"
+    assert confirmation.producing_derivation is None
+    assert confirmation.inputs == ()
 
 
-class TestIdGeneration:
-    def test_generate_id_format(self):
-        from kflow.models import generate_id
-        id_str = generate_id("nd")
-        assert id_str.startswith("nd_")
-        assert len(id_str) == 9  # "nd_" + 6 hex chars
+def test_derived_confirmation_requires_producer_and_direct_inputs_together():
+    file_fact = ConfirmationFile("docs/b.md", Fingerprint("sha256", SHA_A))
+    producer = ConfirmationProducer("dv_ab", Fingerprint("sha256", SHA_B))
 
-    def test_generate_id_randomness(self):
-        from kflow.models import generate_id
-        ids = {generate_id("nd") for _ in range(100)}
-        assert len(ids) == 100  # all unique
+    confirmation = NodeConfirmation(
+        node="nd_b",
+        files=(file_fact,),
+        files_fingerprint=Fingerprint("sha256", SHA_A),
+        producing_derivation=producer,
+        inputs=(ConfirmationInput("nd_a", SHA_A),),
+        effective_version=SHA_B,
+    )
+    assert confirmation.producing_derivation == producer
 
-    def test_generate_unique_id_respects_existing(self):
-        from kflow.models import generate_unique_id
-        existing = {"nd_a1b2c3", "nd_d4e5f6"}
-        new_id = generate_unique_id("nd", existing)
-        assert new_id.startswith("nd_")
-        assert new_id not in existing
-
-    def test_generate_id_different_prefixes(self):
-        from kflow.models import generate_id
-        nd_id = generate_id("nd")
-        dv_id = generate_id("dv")
-        assert nd_id.startswith("nd_")
-        assert dv_id.startswith("dv_")
+    with pytest.raises(ValueError):
+        NodeConfirmation(
+            node="nd_b",
+            files=(file_fact,),
+            files_fingerprint=Fingerprint("sha256", SHA_A),
+            producing_derivation=producer,
+            inputs=(),
+            effective_version=SHA_B,
+        )

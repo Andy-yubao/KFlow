@@ -9,13 +9,13 @@
 KFlow 是项目知识拓扑和影响范围的外部记忆。它帮助 Agent 缩小应检查的范围并解释原因，
 但不向 Agent 传递正文，也不替 Agent 理解或修改项目。
 
-集成应消费正式 CLI 的 JSON 输出，或调用 `kflow.v2.query` 的三个公共入口：
+集成应消费正式 CLI 的 JSON 输出，或调用 `kflow.core.query` 的三个公共入口：
 
 - `query_context(root, node_reference)`：目标 Node 的状态、上下游和相关 Derivation；
 - `query_impact(root, node_reference=None)`：显式或自动检测的下游影响；
 - `query_affected_context(root)`：当前变化范围内仍待检查的项目级上下文。
 
-三者共享 [Schema v2](schema.md) 封套。适配层不应直接调用 Query 模块的下划线内部函数，
+三者共享 [KFlow 机器契约](schema.md) 封套。适配层不应直接调用 Query 模块的下划线内部函数，
 也不应复制 impact 或 `review_order` 算法。
 
 ## 2. Agent 工作流程

@@ -113,6 +113,8 @@ kflow context architecture --json
 
 Context 只返回登记的文件路径和元数据，不读取或返回文件正文。
 
+完整的 Agent 修改、影响检查与逐 Node 确认示例见 [`docs/agent-workflow.md`](docs/agent-workflow.md)。
+
 ### `kflow explain <node>`
 
 以指定 Node 为变化根解释下游影响。显式查询不依赖该 Node 当前是否已经出现 review reason；结果区分直接与间接影响，并在 JSON 中给出影响深度、来源根、经过的 Node/Derivation 路径、当前状态原因和稳定 `review_order`。

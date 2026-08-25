@@ -17,7 +17,7 @@ KFlow 不存储或向 Agent 返回文档正文，不是文档编辑器、通用�
 ## 当前代码状态
 
 - `kflow/` 中的原有模块是可运行的 v1 CLI，保留为行为基线。
-- `kflow/v2/` 是与 v1 隔离的正式领域实现，已包含领域模型、图不变量、有效版本、schema v2 持久化、scan/status、单 Node confirm，以及只读 context/impact 查询。
+- `kflow/v2/` 是与 v1 隔离的正式领域实现，已包含领域模型、图不变量、有效版本、schema v2 持久化、scan/status、单 Node confirm、只读 context/impact 查询，以及正式 CLI 的 Agent workflow 端到端验证。
 - 正式 CLI 直接提供 `kflow init`、`kflow add-node`、`kflow derive`、`kflow status`、`kflow confirm`、`kflow validate`、`kflow context`、`kflow explain` 和 `kflow review-order`；`v2` 只表示内部实现与 schema 版本，不是用户命令层级。
 - 原有 v1 CLI 保留为行为基线，并通过显式的 `kflow legacy` 命令组访问；当前不提供自动数据迁移。
 - v2 当前阶段仅授权上述建图、状态、确认和只读影响解释闭环。除非用户明确要求，不要继续扩展迁移器、Web UI、MCP、watcher 或自动关系推断。

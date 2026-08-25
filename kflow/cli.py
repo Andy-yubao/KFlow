@@ -404,23 +404,33 @@ def _print_v2(result: dict, json_output: bool, command: str = "") -> None:
 
 def _print_v2_context(result: dict) -> None:
     node = result["node"]
-    reasons = ", ".join(node["reasons"]) or "none"
-    print("Node:")
+    names = {
+        item["id"]: item["name"]
+        for item in (node, *result["upstream"], *result["downstream"])
+    }
+    print("Target Node:")
     print(f"{node['name']} ({node['id']})")
     print("\nFiles:")
     for path in node["files"]:
         print(path)
-    print("\nStatus:")
-    print(f"{node['status']} ({reasons})")
-    print("\nUpstream:")
+    print("\nCurrent Status:")
+    print(node["status"])
+    print("\nWhy Relevant:")
+    if not node["reasons"]:
+        print("none")
+    for reason in node["reasons"]:
+        print(reason)
+    print("\nUpstream Dependencies:")
     _print_node_names(result["upstream"])
-    print("\nDownstream:")
-    _print_node_names(result["downstream"])
-    print("\nDerivations:")
+    print("\nDownstream Impact:")
+    _print_impacts(result["downstream"], names)
+    print("\nRelated Derivations:")
     if not result["derivations"]:
         print("none")
     for derivation in result["derivations"]:
         print(f"{derivation['id']}: {derivation['short']}")
+    print("\nRecommended Review Order:")
+    _print_named_order(result["review_order"], names)
 
 
 def _print_v2_explanation(result: dict) -> None:
@@ -469,7 +479,11 @@ def _print_review_items(result: dict) -> None:
         node["id"]: node["name"]
         for node in (*result["changed_nodes"], *result["affected_nodes"])
     }
-    if not result["review_order"]:
+    _print_named_order(result["review_order"], nodes)
+
+
+def _print_named_order(order: list[str], names: dict[str, str]) -> None:
+    if not order:
         print("none")
-    for position, node_id in enumerate(result["review_order"], start=1):
-        print(f"{position}. {nodes[node_id]}")
+    for position, node_id in enumerate(order, start=1):
+        print(f"{position}. {names[node_id]}")

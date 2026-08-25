@@ -19,12 +19,8 @@ def query_context(root: Path, node_reference: str) -> dict:
     upstream_ids = tuple(
         candidate for candidate in graph.upstream(node_id) if candidate != node_id
     )
-    downstream_depths = graph.downstream(node_id)
-    downstream_ids = tuple(
-        candidate
-        for candidate in graph.topological_order()
-        if candidate != node_id and candidate in downstream_depths
-    )
+    impact = _build_impact_result(scanned, (node_id,))
+    downstream_ids = tuple(item["id"] for item in impact["affected_nodes"])
 
     derivation_ids: set[str] = set()
     for candidate in (*upstream_ids, node_id, *downstream_ids):
@@ -37,16 +33,13 @@ def query_context(root: Path, node_reference: str) -> dict:
         "schema_version": 2,
         "node": _status_node(scanned, node_id),
         "upstream": [_node_identity(graph, candidate) for candidate in upstream_ids],
-        "downstream": [
-            {
-                **_node_identity(graph, candidate),
-                "depth": downstream_depths[candidate],
-            }
-            for candidate in downstream_ids
-        ],
+        "downstream": impact["affected_nodes"],
         "derivations": [
             _derivation_result(graph, graph.derivations[derivation_id])
             for derivation_id in sorted(derivation_ids)
+        ],
+        "review_order": [
+            candidate for candidate in impact["review_order"] if candidate != node_id
         ],
         "issues": [_issue_result(issue) for issue in scanned.issues],
     }
@@ -68,6 +61,12 @@ def query_impact(root: Path, node_reference: str | None = None) -> dict:
         )
     else:
         root_ids = (resolve_node_id(graph, node_reference),)
+
+    return _build_impact_result(scanned, root_ids)
+
+
+def _build_impact_result(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict:
+    graph = scanned.graph
 
     impact: dict[str, dict] = {}
     for root_id in root_ids:

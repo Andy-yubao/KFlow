@@ -133,9 +133,10 @@ __all__ = [
 def query_context(root: Path, node_reference: str) -> QueryResult:
     """Return one Node's stable status and topology contract.
 
-    ``node_reference`` accepts a stable Node ID or unique Node name. Failures
-    are returned in the same :class:`QueryResult` shape with ``ok=False``;
-    registered file contents are never included.
+    ``node_reference`` accepts a stable Node ID, unique Node name, or registered
+    repository-relative file path. Failures are returned in the same
+    :class:`QueryResult` shape with ``ok=False``; registered file contents are
+    never included.
     """
     try:
         scanned = scan(root)
@@ -254,8 +255,9 @@ def query_impact(root: Path, node_reference: str | None = None) -> QueryResult:
     """Explain explicit or currently detected downstream impact.
 
     When ``node_reference`` is omitted, file and producing-Derivation changes are
-    used as roots. An explicit Node ID or name is always traversed, regardless
-    of status. Errors use the same stable :class:`QueryResult` envelope.
+    used as roots. An explicit reference is always traversed, regardless of
+    status, and accepts a Node ID, unique name, or registered repository-relative
+    file path. Errors use the same stable :class:`QueryResult` envelope.
     """
     try:
         scanned = scan(root)

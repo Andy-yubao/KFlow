@@ -207,7 +207,7 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 - `query_impact(root, reference=None)`：显式或自动变化根的下游影响；
 - `query_affected_context(root)`：当前变化范围内仍待检查的项目上下文。
 
-查询可以按 Node ID、name 或已登记文件路径定位。未登记文件不是错误，也不触发自动登记。
+查询可以按 Node ID、name 或已登记文件路径定位，操作目标仍是 Node。查询路径可将开头单个 `./` 和 Windows `\` 分隔符规范化为仓库相对 POSIX 路径；绝对路径、drive path 和包含 `..` 的路径不会匹配。未登记文件返回 `unknown_node` 查询错误，但不构成图校验错误，也不触发自动登记。
 
 ## 8. 持久化
 

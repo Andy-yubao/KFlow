@@ -108,3 +108,36 @@ def test_cli_exposes_only_official_commands():
         "explain",
         "review-order",
     )
+
+
+def test_node_commands_accept_registered_file_paths_in_json_and_human_output(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "architecture.md").write_text("architecture", encoding="utf-8")
+
+    run_cli(capsys, "init")
+    node = run_cli(
+        capsys,
+        "add-node",
+        "architecture",
+        "--file",
+        "docs/architecture.md",
+    )["node"]
+
+    context = run_cli(capsys, "context", "docs/architecture.md")
+    explanation = run_cli(capsys, "explain", ".\\docs\\architecture.md")
+    confirmation = run_cli(capsys, "confirm", "./docs/architecture.md")
+
+    assert context["node"]["id"] == node["id"]
+    assert explanation["node"]["id"] == node["id"]
+    assert confirmation["node"] == node["id"]
+
+    main(["context", "docs/architecture.md"])
+    assert "Target Node:\narchitecture" in capsys.readouterr().out
+    main(["explain", "docs/architecture.md"])
+    assert "Cause:\narchitecture" in capsys.readouterr().out
+    main(["confirm", "docs/architecture.md"])
+    assert f"Confirmed Node {node['id']}" in capsys.readouterr().out

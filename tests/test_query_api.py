@@ -7,7 +7,10 @@ from kflow.core.query import (
     query_context,
     query_impact,
 )
-from kflow.core.storage import initialize_project
+from kflow.core.graph import KnowledgeGraph
+from kflow.core.models import KnowledgeNode
+from kflow.core.scan import confirm
+from kflow.core.storage import initialize_project, save_graph
 
 
 PUBLIC_QUERY_FUNCTIONS = (
@@ -88,6 +91,48 @@ def test_unknown_node_error_preserves_the_public_contract(tmp_path) -> None:
                 "references": ["missing"],
             }
         ]
+
+
+def test_context_and_impact_accept_registered_file_path_without_returning_content(
+    tmp_path,
+) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "architecture.md").write_text("PRIVATE CONTENT", encoding="utf-8")
+    (docs / "architecture.svg").write_text("PRIVATE SVG", encoding="utf-8")
+    initialize_project(tmp_path)
+    save_graph(
+        tmp_path,
+        KnowledgeGraph.build(
+            (
+                KnowledgeNode(
+                    "nd_architecture",
+                    "architecture",
+                    ("docs/architecture.md", "docs/architecture.svg"),
+                ),
+            ),
+            (),
+        ),
+    )
+    confirm(tmp_path, "architecture")
+
+    by_name = query_context(tmp_path, "architecture")
+    by_path = query_context(tmp_path, "docs/architecture.md")
+    impact = query_impact(tmp_path, "docs/architecture.svg")
+
+    for result in (by_path, impact):
+        assert_query_contract(result)
+        assert result["node"]["id"] == by_name["node"]["id"]
+        assert "PRIVATE" not in str(result)
+
+    for reference in (
+        "docs/unmanaged.md",
+        "C:/project/docs/architecture.md",
+        "../docs/architecture.md",
+    ):
+        unresolved = query_context(tmp_path, reference)
+        assert_query_contract(unresolved)
+        assert unresolved["issues"][0]["code"] == "unknown_node"
 
 
 def test_uninitialized_project_error_is_stable_for_every_query(tmp_path) -> None:

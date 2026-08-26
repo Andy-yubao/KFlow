@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from kflow.core.graph import GraphValidationError, KnowledgeGraph
 from kflow.core.models import Fingerprint, NodeConfirmation
@@ -22,6 +23,9 @@ from kflow.core.versioning import (
     fingerprint_file,
     fingerprint_files,
 )
+
+
+_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,9 +197,37 @@ def confirm(root: Path, node_reference: str) -> tuple[NodeStatus, NodeStatus]:
 
 
 def resolve_node_id(graph: KnowledgeGraph, reference: str) -> str:
+    """Resolve an exact Node ID, name, or registered repository path."""
     if reference in graph.nodes:
         return reference
     matches = [node.id for node in graph.nodes.values() if node.name == reference]
-    if not matches:
-        raise KeyError(f"unknown node: {reference}")
-    return matches[0]
+    if matches:
+        return matches[0]
+
+    path_reference = _normalize_path_reference(reference)
+    if path_reference is not None:
+        for node in graph.nodes.values():
+            if path_reference in node.files:
+                return node.id
+
+    raise KeyError(f"unknown node: {reference}")
+
+
+def _normalize_path_reference(reference: str) -> str | None:
+    """Accept limited path spelling variants without weakening stored-path rules."""
+    candidate = reference.replace("\\", "/")
+    if candidate.startswith("./"):
+        candidate = candidate[2:]
+    if candidate.startswith("/") or _WINDOWS_DRIVE.match(candidate):
+        return None
+
+    path = PurePosixPath(candidate)
+    if (
+        not candidate
+        or path.is_absolute()
+        or candidate != path.as_posix()
+        or candidate == "."
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        return None
+    return candidate

@@ -114,6 +114,8 @@ kflow validate
 
 所有命令都支持 `--json`。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
 
+`context`、`explain` 和 `confirm` 的目标始终是 Node；其中的 Node reference 可以使用精确的 Node ID、唯一 Node name 或该 Node 已登记的文件路径。查询路径允许仓库相对路径、开头单个 `./` 和 Windows `\` 分隔符的等价写法；未登记或越出仓库的路径不会被自动接受。
+
 ### 多文件 Node
 
 一个 Node 可以由多个完整文件共同构成：

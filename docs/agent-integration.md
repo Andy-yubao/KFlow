@@ -9,13 +9,14 @@
 KFlow 是项目知识拓扑和影响范围的外部记忆。它帮助 Agent 缩小应检查的范围并解释原因，
 但不向 Agent 传递正文，也不替 Agent 理解或修改项目。
 
-集成应消费正式 CLI 的 JSON 输出，或调用 `kflow.core.query` 的三个公共入口：
+集成应消费正式 CLI 的 JSON 输出，或调用 `kflow.core.query` 的四个公共入口：
 
+- `query_project_graph(root)`：完整项目图、全部 Derivation、当前 Node 状态与稳定拓扑顺序；
 - `query_context(root, node_reference)`：目标 Node 的状态、上下游和相关 Derivation；
 - `query_impact(root, node_reference=None)`：显式或自动检测的下游影响；
 - `query_affected_context(root)`：当前变化范围内仍待检查的项目级上下文。
 
-三者共享 [KFlow 机器契约](schema.md) 封套。适配层不应直接调用 Query 模块的下划线内部函数，
+字段与封套见 [KFlow 机器契约](schema.md)。适配层不应直接调用 Query 模块的下划线内部函数，
 也不应复制 impact 或 `review_order` 算法。
 
 ## 2. Agent 工作流程
@@ -38,7 +39,7 @@ Agent 读取必要文件并逐 Node 判断
 
 ### 2.1 修改前
 
-进入项目时先判断 `.kflow/project.json` 是否存在且 schema 可用。不要自动初始化、遍历
+进入项目时先判断 `.kflow/project.json` 是否存在且 schema 可用。首次进入陌生项目或任务涉及多个知识区域时，调用 `kflow overview --json` 建立全貌；目标已明确时不必重复 overview。不要自动初始化、遍历
 正文建图或登记全部文件。
 
 若目标文件属于受管 Node，并且依据或约束不清楚，先查询目标 context。Agent 根据返回的
@@ -110,5 +111,6 @@ confirm 一次只作用于一个 Node。不得级联确认 sibling outputs、下
 - 始终检查 `ok` 和 `issues`，错误结果仍使用稳定 Query 封套。
 - 将 Node ID 作为稳定身份；名称和文件路径用于展示与定位。
 - 保留返回顺序，不在适配层另造 review order。
+- Human Interface 与 Agent Interface 都从 `query_project_graph` 获取完整图，不直接读取 `.kflow` JSON 后复制领域逻辑。
 - 不把 Query 输出当作文档上下文包；Agent 需要正文时自行读取返回路径。
 - 不因未登记文件或空项目自动扩图；未登记本身不是错误。

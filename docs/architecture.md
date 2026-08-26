@@ -34,7 +34,7 @@ registered project files (read bytes only for fingerprints)
 
 - `kflow/cli.py` 提供人类文本与稳定 JSON 两种呈现。
 - `kflow/core/operations.py` 提供小型、原子的建图操作。
-- `kflow/core/query.py` 提供 context、impact 和 affected context。
+- `kflow/core/query.py` 提供完整项目图、context、impact 和 affected context。
 - `kflow/core/graph.py`、`status.py`、`versioning.py` 实现纯领域规则。
 - `kflow/core/storage.py`、`scan.py` 负责规范事实、扫描和确认。
 
@@ -203,11 +203,14 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 公共查询：
 
+- `query_project_graph(root)`：全部 Node、完整 Derivation、当前状态、validation issues 与稳定拓扑顺序；
 - `query_context(root, reference)`：一个 Node 的状态、上下游和相关 Derivation；
 - `query_impact(root, reference=None)`：显式或自动变化根的下游影响；
 - `query_affected_context(root)`：当前变化范围内仍待检查的项目上下文。
 
 查询可以按 Node ID、name 或已登记文件路径定位，操作目标仍是 Node。查询路径可将开头单个 `./` 和 Windows `\` 分隔符规范化为仓库相对 POSIX 路径；绝对路径、drive path 和包含 `..` 的路径不会匹配。未登记文件返回 `unknown_node` 查询错误，但不构成图校验错误，也不触发自动登记。
+
+`query_project_graph` 是 Human Interface 与 Agent Interface 的共同基础。它直接复用 scan 状态、图拓扑和统一 Derivation presenter；Derivation 作为完整多输入、多输出实体返回。展示层不得把投影邻接边误作规范 Derivation 事实，也不得加入坐标、颜色、折叠或选择状态等 UI 私有数据。
 
 ## 8. 持久化
 
@@ -226,6 +229,8 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 
 当前可靠性范围是单工作区、单写者。切换到任意 Git commit 后，应能仅凭该版本的规范元数据和项目文件重建拓扑与确认基线。
 
+未来历史与图差异查询以 Git ref/commit 为数据源，不新增 KFlow event sourcing 或快照数据库；当前阶段不实现按 Git ref 查询或图差异。
+
 ## 9. 接口冻结
 
 - 用户命令固定为顶层 `kflow <command>`，没有版本命令组。
@@ -233,6 +238,7 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 - JSON 结果通过 `schema_version` 管理机器兼容性。
 - 人类输出可以改善措辞与布局，但必须复用同一事实、reasons、impact 和 review order。
 - Agent 适配层不得复制影响传播或排序算法。
+- Human Interface 必须调用完整项目图公共查询，不得直接读取 `.kflow` JSON 后复制领域、状态、Derivation 序列化或排序逻辑。
 
 ## 10. 当前明确排除
 

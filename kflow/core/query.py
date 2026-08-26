@@ -107,6 +107,28 @@ class QueryResult(TypedDict):
     issues: list[QueryIssue]
 
 
+class ProjectSummary(TypedDict):
+    """Stable project-level counts and health state."""
+
+    status: str
+    node_count: int
+    derivation_count: int
+    needs_review_count: int
+    issue_count: int
+
+
+class ProjectGraphResult(TypedDict):
+    """Complete read-only project graph shared by every interface."""
+
+    ok: bool
+    schema_version: int
+    project: ProjectSummary
+    nodes: list[StatusNode]
+    derivations: list[DerivationResult]
+    topological_order: list[str]
+    issues: list[QueryIssue]
+
+
 QUERY_SCHEMA_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "ok",
@@ -123,11 +145,60 @@ QUERY_SCHEMA_FIELDS: Final[frozenset[str]] = frozenset(
 
 __all__ = [
     "QUERY_SCHEMA_FIELDS",
+    "ProjectGraphResult",
     "QueryResult",
+    "present_derivation",
     "query_affected_context",
     "query_context",
     "query_impact",
+    "query_project_graph",
 ]
+
+
+def query_project_graph(root: Path) -> ProjectGraphResult:
+    """Return every Node and Derivation with current status and stable ordering."""
+    try:
+        scanned = scan(root)
+    except (
+        GraphValidationError,
+        KeyError,
+        StorageError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return _project_graph_error(error)
+
+    graph = scanned.graph
+    topological_order = list(graph.topological_order())
+    nodes = [_status_node(scanned, node_id) for node_id in topological_order]
+    derivations = [
+        present_derivation(graph, graph.derivations[derivation_id])
+        for derivation_id in sorted(graph.derivations)
+    ]
+    issues = [_issue_result(issue) for issue in scanned.issues]
+    needs_review_count = sum(bool(node["reasons"]) for node in nodes)
+    status = (
+        "invalid"
+        if issues
+        else "attention_required"
+        if needs_review_count
+        else "current"
+    )
+    return {
+        "ok": not issues,
+        "schema_version": SCHEMA_VERSION,
+        "project": {
+            "status": status,
+            "node_count": len(nodes),
+            "derivation_count": len(derivations),
+            "needs_review_count": needs_review_count,
+            "issue_count": len(issues),
+        },
+        "nodes": nodes,
+        "derivations": derivations,
+        "topological_order": topological_order,
+        "issues": issues,
+    }
 
 
 def query_context(root: Path, node_reference: str) -> QueryResult:
@@ -172,7 +243,7 @@ def query_context(root: Path, node_reference: str) -> QueryResult:
         upstream=[_node_identity(graph, candidate) for candidate in upstream_ids],
         downstream=[_node_identity(graph, candidate) for candidate in downstream_ids],
         derivations=[
-            _derivation_result(graph, graph.derivations[derivation_id])
+            present_derivation(graph, graph.derivations[derivation_id])
             for derivation_id in sorted(derivation_ids)
         ],
         impact=impact,
@@ -243,7 +314,7 @@ def query_affected_context(root: Path) -> QueryResult:
         upstream=[],
         downstream=[_node_identity(graph, node_id) for node_id in review_ids],
         derivations=[
-            _derivation_result(graph, graph.derivations[derivation_id])
+            present_derivation(graph, graph.derivations[derivation_id])
             for derivation_id in sorted(derivation_ids)
         ],
         impact=impact,
@@ -308,7 +379,7 @@ def query_impact(root: Path, node_reference: str | None = None) -> QueryResult:
         upstream=[],
         downstream=[_node_identity(graph, candidate) for candidate in affected_ids],
         derivations=[
-            _derivation_result(graph, graph.derivations[derivation_id])
+            present_derivation(graph, graph.derivations[derivation_id])
             for derivation_id in sorted(derivation_ids)
         ],
         impact=impact,
@@ -378,6 +449,41 @@ def _error_result(error: Exception, reference: str | None) -> QueryResult:
         "relations": {"upstream": [], "downstream": [], "derivations": []},
         "impact": {"changed_nodes": [], "affected_nodes": []},
         "review_order": [],
+        "issues": issues,
+    }
+
+
+def _project_graph_error(error: Exception) -> ProjectGraphResult:
+    if isinstance(error, GraphValidationError):
+        issues = [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "references": list(issue.references),
+            }
+            for issue in error.issues
+        ]
+    else:
+        issues = [
+            {
+                "code": "invalid_project",
+                "message": str(error).strip("'"),
+                "references": [],
+            }
+        ]
+    return {
+        "ok": False,
+        "schema_version": SCHEMA_VERSION,
+        "project": {
+            "status": "invalid",
+            "node_count": 0,
+            "derivation_count": 0,
+            "needs_review_count": 0,
+            "issue_count": len(issues),
+        },
+        "nodes": [],
+        "derivations": [],
+        "topological_order": [],
         "issues": issues,
     }
 
@@ -558,9 +664,10 @@ def _status_node(scanned: ScanResult, node_id: str) -> StatusNode:
     }
 
 
-def _derivation_result(
+def present_derivation(
     graph: KnowledgeGraph, derivation: Derivation
 ) -> DerivationResult:
+    """Present one complete Derivation using the stable machine contract."""
     return {
         "id": derivation.id,
         "short": derivation.short,
@@ -572,7 +679,7 @@ def _derivation_result(
                 "short": item.short,
                 "detail": item.detail,
             }
-            for item in derivation.inputs
+            for item in sorted(derivation.inputs, key=lambda role: role.node)
         ],
         "outputs": [
             {
@@ -581,7 +688,7 @@ def _derivation_result(
                 "short": item.short,
                 "detail": item.detail,
             }
-            for item in derivation.outputs
+            for item in sorted(derivation.outputs, key=lambda role: role.node)
         ],
     }
 

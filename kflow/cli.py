@@ -5,17 +5,52 @@ import json
 import sys
 from pathlib import Path
 
+from kflow.core.graph import GraphValidationError
 from kflow.core.operations import add_derivation, add_node
-from kflow.core.query import query_affected_context, query_context, query_impact
+from kflow.core.query import (
+    present_derivation,
+    query_affected_context,
+    query_context,
+    query_impact,
+    query_project_graph,
+)
 from kflow.core.scan import confirm
 from kflow.core.scan import scan as scan_project
 from kflow.core.scan import scan_and_sync
 from kflow.core.scan import validate as validate_project
-from kflow.core.storage import initialize_project
+from kflow.core.storage import (
+    SCHEMA_VERSION,
+    StorageError,
+    initialize_project,
+    load_graph,
+)
+
+
+class KFlowArgumentParser(argparse.ArgumentParser):
+    """Argument parser that preserves the JSON error contract."""
+
+    json_error_mode = False
+
+    def error(self, message: str) -> None:
+        if self.json_error_mode:
+            result = {
+                "ok": False,
+                "schema_version": SCHEMA_VERSION,
+                "issues": [
+                    {
+                        "code": "invalid_argument",
+                        "message": message,
+                        "references": [],
+                    }
+                ],
+            }
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            raise SystemExit(2)
+        super().error(message)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = KFlowArgumentParser(
         prog="kflow",
         description=(
             "Understand important project knowledge, what changed, and what to "
@@ -88,6 +123,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output Node and its role; repeat for additional outputs.",
     )
     _add_json_option(p_derive)
+
+    p_overview = sub.add_parser(
+        "overview",
+        help="Show the complete project graph and current state.",
+        description=(
+            "Show every Node and complete Derivation in stable topological order. "
+            "This operation is read-only."
+        ),
+    )
+    _add_json_option(p_overview)
 
     p_status = sub.add_parser(
         "status",
@@ -173,33 +218,39 @@ def _add_json_option(parser: argparse.ArgumentParser) -> None:
 
 def main(argv=None) -> None:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    _set_json_error_mode(parser, "--json" in arguments)
+    args = parser.parse_args(arguments)
 
     if not args.command:
         parser.print_help()
         raise SystemExit(1)
 
     try:
-        dispatch(args)
+        result = dispatch(args)
     except Exception as error:
+        result = _error_envelope(error, _command_references(args))
         if getattr(args, "json", False):
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "error": str(error),
-                        "type": type(error).__name__,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-            )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         else:
             print(f"KFlow could not complete the command: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 
+    _print_result(result, getattr(args, "json", False), args.command)
+    if not result.get("ok", True):
+        raise SystemExit(2)
 
-def dispatch(args) -> None:
+
+def _set_json_error_mode(parser: argparse.ArgumentParser, enabled: bool) -> None:
+    if isinstance(parser, KFlowArgumentParser):
+        parser.json_error_mode = enabled
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _set_json_error_mode(child, enabled)
+
+
+def dispatch(args) -> dict:
     """Run one official KFlow command."""
     root = Path.cwd()
     if args.command == "init":
@@ -227,13 +278,11 @@ def dispatch(args) -> None:
         )
         result = {
             "ok": True,
-            "schema_version": 2,
-            "derivation": {
-                "id": derivation.id,
-                "inputs": [node for node, _short in args.input],
-                "outputs": [node for node, _short in args.output],
-            },
+            "schema_version": SCHEMA_VERSION,
+            "derivation": present_derivation(load_graph(root), derivation),
         }
+    elif args.command == "overview":
+        result = query_project_graph(root)
     elif args.command == "status":
         result = _status_result(root)
     elif args.command == "scan":
@@ -280,7 +329,49 @@ def dispatch(args) -> None:
         result = query_impact(root)
     else:
         raise ValueError(f"unknown command: {args.command}")
-    _print_result(result, getattr(args, "json", False), args.command)
+    return result
+
+
+def _command_references(args) -> list[str]:
+    references: list[str] = []
+    node = getattr(args, "node", None)
+    if node:
+        references.append(node)
+    references.extend(getattr(args, "files", ()) or ())
+    for attribute in ("input", "output"):
+        references.extend(item[0] for item in (getattr(args, attribute, ()) or ()))
+    return references
+
+
+def _error_envelope(error: Exception, references: list[str]) -> dict:
+    if isinstance(error, GraphValidationError):
+        issues = [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "references": list(issue.references),
+            }
+            for issue in error.issues
+        ]
+    else:
+        if isinstance(error, StorageError):
+            code = "invalid_project"
+        elif isinstance(error, KeyError):
+            code = "unknown_node"
+        elif isinstance(error, OSError):
+            code = "io_error"
+        elif isinstance(error, (TypeError, ValueError)):
+            code = "invalid_argument"
+        else:
+            code = "internal_error"
+        issues = [
+            {
+                "code": code,
+                "message": str(error).strip("'"),
+                "references": references,
+            }
+        ]
+    return {"ok": False, "schema_version": SCHEMA_VERSION, "issues": issues}
 
 
 def _status_result(root: Path) -> dict:
@@ -344,7 +435,12 @@ def _print_result(result: dict, json_output: bool, command: str) -> None:
     if json_output:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return
+    if not result.get("ok", True):
+        print("KFlow could not complete the command:", file=sys.stderr)
+        _print_issues(result.get("issues", []), file=sys.stderr)
+        return
     printers = {
+        "overview": _print_overview,
         "status": _print_status,
         "scan": _print_scan,
         "context": _print_context,
@@ -363,9 +459,11 @@ def _print_result(result: dict, json_output: bool, command: str) -> None:
             print(f"- {path}")
     elif command == "derive":
         derivation = result["derivation"]
-        print(f"Created Derivation {derivation['id']}")
-        print(f"Inputs: {', '.join(derivation['inputs'])}")
-        print(f"Outputs: {', '.join(derivation['outputs'])}")
+        print(f"Created Derivation {derivation['short']} ({derivation['id']})")
+        print("Inputs:")
+        _print_derivation_roles(derivation["inputs"])
+        print("Outputs:")
+        _print_derivation_roles(derivation["outputs"])
     elif command == "confirm":
         print(f"Confirmed Node {result['node']}")
         print(f"Remaining Nodes needing review: {len(result['remaining_review'])}")
@@ -424,13 +522,58 @@ def _print_validation(result: dict) -> None:
     _print_issues(result["issues"])
 
 
-def _print_issues(issues: list[dict]) -> None:
+def _print_issues(issues: list[dict], *, file=None) -> None:
+    output = sys.stdout if file is None else file
     if not issues:
-        print("none")
+        print("none", file=output)
     for issue in issues:
         references = ", ".join(issue.get("references", []))
         suffix = f" ({references})" if references else ""
-        print(f"- {issue['code']}: {issue['message']}{suffix}")
+        print(f"- {issue['code']}: {issue['message']}{suffix}", file=output)
+
+
+def _print_overview(result: dict) -> None:
+    project = result["project"]
+    print("KFlow project overview")
+    print(f"Project state: {project['status'].replace('_', ' ')}")
+    print(
+        "Summary: "
+        f"{project['node_count']} Nodes; "
+        f"{project['derivation_count']} Derivations; "
+        f"{project['needs_review_count']} need review; "
+        f"{project['issue_count']} issues"
+    )
+    print("\nNodes in topological order:")
+    if not result["nodes"]:
+        print("none")
+    for node in result["nodes"]:
+        reasons = ", ".join(node["reasons"]) or "none"
+        print(f"- {node['name']} ({node['id']}) [{node['status']}]")
+        print(f"  Reasons: {reasons}")
+        print(f"  Files: {', '.join(node['files'])}")
+
+    print("\nDerivations:")
+    if not result["derivations"]:
+        print("none")
+    for derivation in result["derivations"]:
+        print(f"- {derivation['short']} ({derivation['id']})")
+        if derivation["detail"]:
+            print(f"  Detail: {derivation['detail']}")
+        print("  Inputs:")
+        _print_derivation_roles(derivation["inputs"], indent="    ")
+        print("  Outputs:")
+        _print_derivation_roles(derivation["outputs"], indent="    ")
+
+    print("\nValidation issues:")
+    _print_issues(result["issues"])
+    if project["needs_review_count"] and not result["issues"]:
+        print("\nNext: run 'kflow context --affected' for the active review scope.")
+
+
+def _print_derivation_roles(roles: list[dict], indent: str = "- ") -> None:
+    for role in roles:
+        suffix = f" — {role['detail']}" if role["detail"] else ""
+        print(f"{indent}{role['name']} ({role['node']}): {role['short']}{suffix}")
 
 
 def _print_context(result: dict) -> None:

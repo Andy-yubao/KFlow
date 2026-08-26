@@ -32,6 +32,7 @@ from kflow.core.storage import (
     save_graph,
     save_node,
 )
+from kflow.core.query import ProjectGraphResult, query_project_graph
 
 __all__ = [
     "ConfirmationFile",
@@ -46,6 +47,7 @@ __all__ = [
     "KnowledgeNode",
     "NodeConfirmation",
     "NodeStatus",
+    "ProjectGraphResult",
     "SCHEMA_VERSION",
     "ScanIssue",
     "ScanResult",
@@ -61,6 +63,7 @@ __all__ = [
     "initialize_project",
     "load_confirmations",
     "load_graph",
+    "query_project_graph",
     "save_confirmation",
     "save_derivation",
     "save_graph",

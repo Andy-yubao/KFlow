@@ -81,6 +81,7 @@ kflow confirm architecture
 对应命令：
 
 ```bash
+kflow overview
 kflow status
 kflow context --affected
 kflow review-order
@@ -103,6 +104,7 @@ kflow validate
 | `kflow init [path]` | 初始化 Git-native 元数据，不扫描项目建图 |
 | `kflow add-node <name> --file <path>` | 将一个或多个已有完整文件登记为 Node |
 | `kflow derive ...` | 用显式 Derivation 连接已有 Node |
+| `kflow overview` | 查看完整项目结构、全部 Node 与完整 Derivation |
 | `kflow status` | 展示项目状态、待关注 Node、原因和问题 |
 | `kflow scan` | 观察受管文件变化并刷新可重建本地缓存 |
 | `kflow context <node>` | 查看一个 Node 的路径、状态、关系和影响 |
@@ -114,7 +116,11 @@ kflow validate
 
 所有命令都支持 `--json`。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
 
+命令职责有所区分：`overview` 建立完整项目全貌；`context <node>` 查看一个 Node 的相关上下文；`context --affected` 查看当前变化对应的待检查范围；`explain <node>` 解释指定变化根的下游影响；`review-order` 只展示当前变化对应的稳定检查顺序。
+
 `context`、`explain` 和 `confirm` 的目标始终是 Node；其中的 Node reference 可以使用精确的 Node ID、唯一 Node name 或该 Node 已登记的文件路径。查询路径允许仓库相对路径、开头单个 `./` 和 Windows `\` 分隔符的等价写法；未登记或越出仓库的路径不会被自动接受。
+
+Node name 应使用简短、稳定、面向人类的名称，不建议使用 `docs/example.md` 一类相对路径作为 Node name；文件路径通过 Node 的 `files` 字段表达。这是命名建议，不改变 Node reference 的解析行为。
 
 ### 多文件 Node
 
@@ -159,6 +165,7 @@ kflow confirm architecture
 带 `--json` 的输出面向 Agent 与未来适配层：
 
 ```bash
+kflow overview --json
 kflow context --affected --json
 ```
 
@@ -185,6 +192,7 @@ Node、Derivation 和 Confirmation 是 Git 跟踪的共享事实；cache、runti
 - KFlow 只保存显式关系，不根据正文、文件名或相似性自动猜测 Derivation。
 - KFlow 只提示可能受影响的位置，不判断正文真伪，不自动修改下游。
 - Git 管理正文和历史；编辑器、Agent 或人类负责阅读与修改；KFlow 管理知识拓扑和影响范围。
+- Human Interface 与 Agent Interface 消费同一个完整项目图公共查询；未来历史与差异视图从 Git 获取，不建立第二套历史引擎。
 
 ## 文档
 

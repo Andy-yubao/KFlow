@@ -22,6 +22,8 @@ tests
 
 三个 Node 都已经在当前版本下分别确认。用户随后修改 `docs/architecture.md`。
 
+若这是 Agent 首次进入的陌生 KFlow 项目，或任务横跨多个知识区域，应先执行 `kflow overview --json` 获取完整项目结构、全部 Derivation 与稳定拓扑顺序。目标 Node 已明确时无需在后续每一步重复 overview，直接进入 context/impact 闭环。
+
 ## 1. 检测变化
 
 Agent 完成文件修改后先执行扫描：
@@ -135,6 +137,8 @@ kflow validate --json
 ## 完整命令序列
 
 ```text
+首次进入陌生项目时：kflow overview --json
+→
 Agent 修改 docs/architecture.md
 → kflow scan --json
 → kflow explain architecture --json

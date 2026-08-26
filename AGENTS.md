@@ -17,9 +17,10 @@ KFlow 不存储或返回文档正文，不是文档编辑器、通用语义检�
 
 ## 当前代码状态
 
-- `kflow/core/` 是唯一正式领域与应用实现，包含领域模型、图不变量、有效版本、Git-native 持久化、scan/status、单 Node confirm、只读 context/impact 查询与稳定机器契约。
-- `kflow/cli.py` 是唯一正式 CLI 入口，提供 `init`、`add-node`、`derive`、`status`、`scan`、`confirm`、`validate`、`context`、`explain` 和 `review-order`。
+- `kflow/core/` 是唯一正式领域与应用实现，包含领域模型、图不变量、有效版本、Git-native 持久化、scan/status、单 Node confirm、只读项目图/context/impact 查询与稳定机器契约；`query_project_graph` 是 Human Interface 和 Agent Interface 共用的完整项目图公共入口。
+- `kflow/cli.py` 是唯一正式 CLI 入口，提供 `init`、`add-node`、`derive`、`overview`、`status`、`scan`、`confirm`、`validate`、`context`、`explain` 和 `review-order`。
 - 当前阶段只授权上述建图、状态、确认和只读影响解释闭环。除非用户明确要求，不要扩展 Web UI、MCP、watcher 或自动关系推断。
+- 未来 Human Interface 必须消费 `query_project_graph`，不得直接读取 `.kflow` JSON 后复制图、状态、Derivation 序列化或拓扑排序逻辑。
 - `docs/history/` 只保存历史决策材料，不定义当前产品行为。
 
 ## 权威文档

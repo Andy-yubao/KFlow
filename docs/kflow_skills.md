@@ -1,6 +1,6 @@
 # KFlow Agent Skill
 
-> 状态：当前 Agent 使用基线（2026-08-25）
+> 状态：当前 Agent 使用基线（2026-08-26）
 > 本文描述应调用的能力、顺序与边界，不固定命令名、参数或返回字段拼写。
 
 ## 目的
@@ -14,6 +14,8 @@ Agent 负责读取、理解和修改文件，也负责判断受影响 Node 是�
 进入项目并准备处理重要文件时，先判断项目是否启用 KFlow。未启用时，不自动初始化或建图。
 
 已启用时，按 Node ID、唯一 name 或已登记文件路径定位目标 Node；文件路径只是 Node reference，后续操作仍以 Node 为单位。未受管文件会得到 `unknown_node` 查询结果，但不代表项目图无效，也不应因此自动登记。
+
+首次进入一个已启用 KFlow 的陌生项目，或当前任务涉及多个知识区域时，先调用 `kflow overview --json` 建立项目全貌。如果已经明确目标文件或 Node，不必在每一步重复调用 overview；可以直接使用 `context`、`explain` 或 `context --affected`。
 
 新文件只有在值得长期记住“从哪里来、变化后影响哪里”时才适合登记，例如：
 
@@ -110,6 +112,7 @@ Agent 根据当前上下文决定哪些文件需要读取。明显的拼写或�
 
 人类与 Agent 使用同一套事实。人类可以通过：
 
+- `kflow overview` 查看完整项目结构和全部 Derivation；
 - `kflow status` 查看项目整体状态、待关注 Node 与原因；
 - `kflow context <node>` 理解一个重要知识单元的上下游关系；
 - `kflow explain <node>` 理解一次修改可能传播到哪里；
@@ -121,6 +124,7 @@ KFlow 给出结构和影响提示，人类仍负责阅读真实文件、判断�
 ## 建图与维护边界
 
 - Node 绑定一个或多个已存在的完整文件；不管理目录、章节、段落或代码片段。
+- Node name 应使用简短、稳定、面向人类的名称，不建议使用 `docs/example.md` 一类相对路径作为 Node name。文件路径通过 `files` 字段表达；这只是使用建议，不增加运行时校验或改变 reference 解析顺序。
 - 没有 producing Derivation 的 Node 合法，并自动视为源 Node。
 - Derivation 至少有一个 input 和一个 output，支持多输入、多输出；每个 Node 至多一个 producer，图必须无环。
 - producer 变化通过修改相关 Derivation 组合完成；不要寻找独立 `rewire` 能力。

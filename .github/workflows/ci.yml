@@ -26,3 +26,28 @@ jobs:
         run: ruff check .
       - name: Check Ruff formatting
         run: ruff format --check .
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
+      - name: Run frontend typecheck
+        working-directory: ui
+        run: npm run typecheck
+      - name: Run frontend tests
+        working-directory: ui
+        run: npm run test
+      - name: Build frontend
+        working-directory: ui
+        run: npm run build
+      - name: Check committed frontend build
+        run: git diff --exit-code -- kflow/human/static

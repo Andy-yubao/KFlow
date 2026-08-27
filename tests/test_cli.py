@@ -125,6 +125,7 @@ def test_cli_exposes_only_official_commands():
         "context",
         "explain",
         "review-order",
+        "ui",
     )
 
 

@@ -14,3 +14,9 @@ kflow = "kflow.cli:main"
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+"kflow.human" = ["static/index.html", "static/assets/*"]
+
+[tool.setuptools.packages.find]
+include = ["kflow*"]

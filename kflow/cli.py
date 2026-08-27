@@ -24,6 +24,7 @@ from kflow.core.storage import (
     initialize_project,
     load_graph,
 )
+from kflow.human.server import run_ui
 
 
 class KFlowArgumentParser(argparse.ArgumentParser):
@@ -206,6 +207,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_option(p_review)
 
+    p_ui = sub.add_parser(
+        "ui",
+        help="Open the local read-only Human Interface.",
+        description=(
+            "Serve the current project's knowledge graph on 127.0.0.1. "
+            "This foreground command is read-only."
+        ),
+    )
+    p_ui.add_argument(
+        "--port",
+        type=_port_number,
+        default=0,
+        help="Loopback port (default: choose a random available port).",
+    )
+    p_ui.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open the browser automatically.",
+    )
+    _add_json_option(p_ui)
+
     return parser
 
 
@@ -216,6 +238,13 @@ def _add_json_option(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help="Return the stable machine-readable result.",
     )
+
+
+def _port_number(value: str) -> int:
+    port = int(value)
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 0 and 65535")
+    return port
 
 
 def main(argv=None) -> None:
@@ -229,6 +258,19 @@ def main(argv=None) -> None:
     if not args.command:
         parser.print_help()
         raise SystemExit(1)
+
+    if args.command == "ui" and getattr(args, "json", False):
+        parser.error("ui does not support --json")
+
+    if args.command == "ui":
+        try:
+            run_ui(Path.cwd(), port=args.port, open_browser=not args.no_open)
+        except Exception as error:
+            print(
+                f"KFlow could not start the Human Interface: {error}", file=sys.stderr
+            )
+            raise SystemExit(2) from error
+        return
 
     try:
         result = dispatch(args)

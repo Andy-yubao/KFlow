@@ -10,7 +10,7 @@ export function DerivationNodeCard({
     <div className={`graph-node derivation-node ${selected ? "selected" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="node-kicker">Derivation</div>
-      <strong>{data.derivation.short}</strong>
+      <strong title={data.derivation.short}>{data.derivation.short}</strong>
       <div className="node-meta">
         {data.derivation.inputs.length} in · {data.derivation.outputs.length} out
       </div>

@@ -58,17 +58,25 @@ h1, h2, h3, p { margin-top: 0; }
 .empty-symbol { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: #e7eee9; color: #4e6f5e; font-size: 31px; }
 
 .graph-node { width: 100%; height: 100%; border: 1px solid; border-radius: 10px; padding: 15px 16px; background: white; box-shadow: 0 5px 16px rgb(36 55 46 / 10%); }
-.graph-node strong { display: block; font-size: 15px; line-height: 1.25; margin: 5px 0 12px; }
+.graph-node strong {
+  display: -webkit-box; font-size: 15px; line-height: 1.25; margin: 5px 0 12px;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
 .graph-node.selected { outline: 3px solid rgb(68 128 98 / 25%); }
-.knowledge-node { width: 240px; min-height: 120px; border-color: #b6c9bd; }
+/* These fixed dimensions must match the Dagre constants in layoutGraph.ts. */
+.knowledge-node { width: 240px; height: 120px; border-color: #b6c9bd; }
 .knowledge-node.attention { border-left: 5px solid #c67b2d; padding-left: 12px; }
 .knowledge-node.current { border-left: 5px solid #3f8a66; padding-left: 12px; }
-.derivation-node { width: 210px; min-height: 96px; border-color: #8f87b7; background: #f7f5ff; border-radius: 24px; padding-inline: 20px; }
+.knowledge-node.unknown { border-left: 5px solid #89938d; padding-left: 12px; }
+.derivation-node { width: 210px; height: 96px; border-color: #8f87b7; background: #f7f5ff; border-radius: 24px; padding: 10px 20px; }
+.derivation-node strong { line-height: 1.2; margin: 3px 0 5px; }
 .node-kicker, .eyebrow { color: #748078; font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 .derivation-node .node-kicker { color: #6d6398; }
 .node-meta { display: flex; align-items: center; gap: 6px; color: #69756e; font-size: 11px; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #3f8a66; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.status-dot.current { background: #3f8a66; }
 .status-dot.attention { background: #c67b2d; }
+.status-dot.unknown { background: #89938d; }
 .react-flow__edge-path { stroke: #8b9991; stroke-width: 1.5; }
 .react-flow__handle { width: 7px; height: 7px; border: 1px solid white; background: #527563; }
 .react-flow__controls { border: 1px solid #cbd4ce; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgb(24 32 29 / 10%); }

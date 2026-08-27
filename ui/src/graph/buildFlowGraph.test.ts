@@ -6,7 +6,11 @@ import {
   derivationFlowId,
   knowledgeFlowId,
 } from "./buildFlowGraph";
-import { layoutProjectGraph } from "./layoutGraph";
+import {
+  DERIVATION_NODE_SIZE,
+  KNOWLEDGE_NODE_SIZE,
+  layoutProjectGraph,
+} from "./layoutGraph";
 
 function manyToManyProject(): ProjectGraphResult {
   return {
@@ -52,6 +56,11 @@ function manyToManyProject(): ProjectGraphResult {
 }
 
 describe("buildFlowGraph", () => {
+  it("keeps Dagre dimensions aligned with the fixed card sizes", () => {
+    expect(KNOWLEDGE_NODE_SIZE).toEqual({ width: 240, height: 120 });
+    expect(DERIVATION_NODE_SIZE).toEqual({ width: 210, height: 96 });
+  });
+
   it("keeps a many-to-many Derivation as one first-class node", () => {
     const graph = buildFlowGraph(manyToManyProject());
 

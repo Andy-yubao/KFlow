@@ -33,8 +33,6 @@ def test_wheel_contains_human_interface_static_assets(tmp_path) -> None:
         ],
         cwd=source,
         check=True,
-        capture_output=True,
-        text=True,
     )
 
     wheels = list(wheelhouse.glob("*.whl"))

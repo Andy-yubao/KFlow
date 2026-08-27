@@ -31,6 +31,14 @@ uv tool install .
 kflow --help
 ```
 
+在已经启用 KFlow 的项目根目录中，可以打开本地只读浏览器界面：
+
+```bash
+kflow ui
+```
+
+服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。该界面只显示公共项目图，不提供编辑或写入 API。
+
 ## 五分钟快速开始
 
 假设项目中已有 `docs/requirements.md` 和 `docs/architecture.md`：
@@ -113,8 +121,9 @@ kflow validate
 | `kflow review-order` | 展示当前变化对应的稳定检查顺序 |
 | `kflow confirm <node>` | 记录一个 Node 已在当前条件下完成检查 |
 | `kflow validate` | 校验元数据、文件引用与图不变量 |
+| `kflow ui [--port PORT] [--no-open]` | 启动本地只读浏览器界面 |
 
-所有命令都支持 `--json`，该参数可放在子命令前或后（例如 `kflow --json status` 与 `kflow status --json` 等价）。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
+所有有限的数据和元数据命令都支持 `--json`，该参数可放在子命令前或后（例如 `kflow --json status` 与 `kflow status --json` 等价）。`ui` 是前台交互式启动器，不提供 JSON 输出模式。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
 
 命令职责有所区分：`overview` 建立完整项目全貌；`context <node>` 查看一个 Node 的相关上下文；`context --affected` 查看当前变化对应的待检查范围；`explain <node>` 解释指定变化根的下游影响；`review-order` 只展示当前变化对应的稳定检查顺序。
 
@@ -202,6 +211,7 @@ Node、Derivation 和 Confirmation 是 Git 跟踪的共享事实；cache、runti
 - [Agent 工作流](docs/agent-workflow.md)
 - [KFlow 使用指南](docs/kflow_skills.md)
 - [适配层说明](docs/agent-integration.md)
+- [Human Interface 架构](docs/human-interface.md)
 
 历史设计材料集中在 `docs/history/`，仅用于追溯，不定义当前产品行为。
 
@@ -213,7 +223,17 @@ ruff check .
 ruff format --check .
 ```
 
-项目没有第三方运行时依赖；pytest 与 Ruff 仅用于开发。
+前端开发需要 Node.js 版本见 `ui/.nvmrc`：
+
+```bash
+cd ui
+npm ci
+npm run typecheck
+npm run test
+npm run build
+```
+
+开发时可先运行 `kflow ui --port 8765 --no-open`，再在 `ui/` 中运行 `npm run dev`；Vite 会把 `/api` 代理到本地 Python 服务。production build 写入 `kflow/human/static/` 并随 Python 包分发，最终用户运行 `kflow ui` 不需要 Node.js。Python 运行时仍只依赖标准库；pytest、Ruff 和前端工具只用于开发。
 
 ## 许可证
 

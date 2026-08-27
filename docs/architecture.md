@@ -21,7 +21,7 @@ KFlow 不得：
 ## 2. 架构分层
 
 ```text
-CLI / future adapters
+CLI / Human Interface / future adapters
         ↓
 application operations and queries
         ↓
@@ -37,8 +37,11 @@ registered project files (read bytes only for fingerprints)
 - `kflow/core/query.py` 提供完整项目图、context、impact 和 affected context。
 - `kflow/core/graph.py`、`status.py`、`versioning.py` 实现纯领域规则。
 - `kflow/core/storage.py`、`scan.py` 负责规范事实、扫描和确认。
+- `kflow/human/` 是本地只读 Human Interface 适配层，只通过公共 Query API 提供 HTTP JSON 和包内静态资源。
+- `ui/` 是 React 前端源代码；布局、选择等 UI 状态不进入领域层。
 
 人类界面和 Agent 接口消费同一套领域事实与排序算法，不维护第二套状态逻辑。
+Human Interface 的技术边界、运行流程与演进阶段见 [Human Interface 架构](human-interface.md)。
 
 ## 3. 领域模型
 
@@ -239,6 +242,7 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 - 人类输出可以改善措辞与布局，但必须复用同一事实、reasons、impact 和 review order。
 - Agent 适配层不得复制影响传播或排序算法。
 - Human Interface 必须调用完整项目图公共查询，不得直接读取 `.kflow` JSON 后复制领域、状态、Derivation 序列化或排序逻辑。
+- `kflow/human/` 和 `ui/` 不属于领域层，不得把画布坐标、选择或加载状态写入 Core。
 
 ## 10. 当前明确排除
 
@@ -249,7 +253,7 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 - 固定关系类型枚举；
 - 级联确认；
 - 自动修改下游；
-- Web UI、MCP Server、watcher 或常驻服务；
+- 远程 Web 服务、MCP Server、watcher 或后台常驻服务；
 - event sourcing、快照数据库或时间旅行引擎。
 
 未来集成必须建立在当前稳定事实、查询和机器契约之上，不得改变这些核心边界。

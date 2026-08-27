@@ -2,7 +2,7 @@
 
 本文说明 Agent 或未来适配层如何组合 KFlow 的稳定只读查询与原子 confirm 操作。详细的
 人工演练见 [agent-workflow.md](agent-workflow.md)，机器字段见
-[schema.md](schema.md)。当前阶段不实现 MCP Server、IDE 插件、Web UI 或常驻 watcher。
+[schema.md](schema.md)。当前提供消费同一公共项目图的本地只读 Human Interface；不实现 MCP Server、IDE 插件、远程服务或常驻 watcher。
 
 ## 1. 集成目标
 

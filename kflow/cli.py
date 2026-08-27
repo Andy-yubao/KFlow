@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Return the stable machine-readable result.",
     )
     sub = parser.add_subparsers(dest="command", title="commands", metavar="COMMAND")
@@ -212,6 +213,7 @@ def _add_json_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Return the stable machine-readable result.",
     )
 
@@ -222,6 +224,8 @@ def main(argv=None) -> None:
     _set_json_error_mode(parser, "--json" in arguments)
     args = parser.parse_args(arguments)
 
+    if not args.command and getattr(args, "json", False):
+        parser.error("a command is required")
     if not args.command:
         parser.print_help()
         raise SystemExit(1)

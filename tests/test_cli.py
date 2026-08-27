@@ -212,6 +212,34 @@ def test_overview_cli_matches_public_graph_and_shows_complete_derivation(
     assert "kflow context --affected" in text
 
 
+def test_json_option_is_equivalent_before_and_after_command(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "architecture.md").write_text("architecture", encoding="utf-8")
+
+    run_cli(capsys, "init")
+    run_cli(
+        capsys,
+        "add-node",
+        "architecture",
+        "--file",
+        "docs/architecture.md",
+    )
+
+    for command in (("overview",), ("context", "architecture")):
+        main([*command, "--json"])
+        trailing = capsys.readouterr()
+        main(["--json", *command])
+        leading = capsys.readouterr()
+
+        assert trailing.err == leading.err == ""
+        assert json.loads(trailing.out) == json.loads(leading.out)
+        assert trailing.out == leading.out
+
+
 def test_derive_by_registered_path_returns_canonical_identity_in_human_output(
     tmp_path, monkeypatch, capsys
 ):

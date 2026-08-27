@@ -126,3 +126,30 @@ def test_argument_parser_errors_use_json_envelope(capsys):
             }
         ],
     }
+
+
+def test_json_without_command_uses_machine_error_envelope(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--json"])
+
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+
+    assert exit_info.value.code != 0
+    assert captured.err == ""
+    assert result["ok"] is False
+    assert result["schema_version"] == 2
+    assert result["issues"][0]["code"] == "invalid_argument"
+    assert result["issues"][0]["references"] == []
+    assert "Traceback" not in captured.out
+    assert "usage:" not in captured.out
+
+
+def test_human_mode_without_command_still_prints_help(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        main([])
+
+    captured = capsys.readouterr()
+    assert exit_info.value.code != 0
+    assert "usage: kflow" in captured.out
+    assert captured.err == ""

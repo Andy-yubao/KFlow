@@ -114,7 +114,7 @@ kflow validate
 | `kflow confirm <node>` | 记录一个 Node 已在当前条件下完成检查 |
 | `kflow validate` | 校验元数据、文件引用与图不变量 |
 
-所有命令都支持 `--json`。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
+所有命令都支持 `--json`，该参数可放在子命令前或后（例如 `kflow --json status` 与 `kflow status --json` 等价）。机器结果只包含路径、拓扑、显式语义、状态、影响和校验问题，不包含正文、片段、自动摘要或拼装 Prompt。
 
 命令职责有所区分：`overview` 建立完整项目全貌；`context <node>` 查看一个 Node 的相关上下文；`context --affected` 查看当前变化对应的待检查范围；`explain <node>` 解释指定变化根的下游影响；`review-order` 只展示当前变化对应的稳定检查顺序。
 

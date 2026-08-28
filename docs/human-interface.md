@@ -109,7 +109,7 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 
 Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。悬停显示 `short` 的轻量 tooltip，单击后 Inspector 显示 ID、完整语义和全部输入输出角色。搜索有命中时只降低非命中上下文的透明度；没有任何 Node 或 Derivation 命中时保持图的正常不透明度，并在搜索框附近显示明确提示。状态与 needs-review 筛选仍独立控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
 
-Graph Diff 面板显示 `HEAD` 短 SHA、subject、六类增删改计数和 topology changed/unchanged。当前仍存在的新增或修改实体复用 `ProjectContext` 的选择与画布定位；已删除实体只显示 HEAD 中的历史公开结构，不尝试选择当前不存在的画布元素。
+Graph Diff 面板显示 `HEAD` 短 SHA、subject、六类增删改计数和 topological order changed/unchanged。Changed 项显示公开结构的 before → after；当前仍存在的新增或修改实体复用 `ProjectContext` 的选择与画布定位；已删除实体只显示 HEAD 中的历史公开结构，不尝试选择当前不存在的画布元素。这里的 `topology_changed` 只表示稳定拓扑顺序是否变化，不表示任意边结构是否变化。
 
 当前不实现任意 commit selector、分支选择、历史时间线、Git patch 或正文 diff、checkout、编辑、confirm、正文预览、自动摘要、自动轮询、watcher、WebSocket、远程访问和桌面封装。
 

@@ -3,25 +3,257 @@ import type {
   ChangedDerivation,
   ChangedNode,
   DerivationResult,
+  DerivationRole,
   GraphDiffResult,
   StructuralNode,
 } from "../types/projectGraph";
 
+function displayValue(value: string) {
+  return value || "None";
+}
+
+function ScalarChange({
+  label,
+  before,
+  after,
+}: {
+  label: string;
+  before: string;
+  after: string;
+}) {
+  return (
+    <div className="scalar-change">
+      <h5>{label}</h5>
+      <p>
+        <span className="change-before">{displayValue(before)}</span>
+        <span className="change-arrow" aria-hidden="true">
+          →
+        </span>
+        <span className="change-after">{displayValue(after)}</span>
+      </p>
+    </div>
+  );
+}
+
+function FileSetChange({ before, after }: { before: string[]; after: string[] }) {
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  const removed = before.filter((path) => !afterSet.has(path));
+  const added = after.filter((path) => !beforeSet.has(path));
+  if (removed.length === 0 && added.length === 0) return null;
+  return (
+    <section className="collection-change">
+      <h5>Files</h5>
+      <ul className="set-change-list">
+        {removed.map((path) => (
+          <li className="removed" key={`removed:${path}`}>
+            <span aria-hidden="true">-</span>
+            <code>{path}</code>
+          </li>
+        ))}
+        {added.map((path) => (
+          <li className="added" key={`added:${path}`}>
+            <span aria-hidden="true">+</span>
+            <code>{path}</code>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RoleItem({
+  role,
+  marker,
+}: {
+  role: DerivationRole;
+  marker: "+" | "-";
+}) {
+  return (
+    <li className={marker === "+" ? "added" : "removed"}>
+      <span aria-hidden="true">{marker}</span>
+      <div>
+        <strong>{role.name}</strong>
+        <code>{role.node}</code>
+        <p>{role.short}</p>
+        {role.detail && <small>{role.detail}</small>}
+      </div>
+    </li>
+  );
+}
+
+function ChangedRole({
+  before,
+  after,
+}: {
+  before: DerivationRole;
+  after: DerivationRole;
+}) {
+  return (
+    <article className="changed-role">
+      <h6>Changed: {before.node}</h6>
+      {before.name !== after.name && (
+        <ScalarChange label="Name" before={before.name} after={after.name} />
+      )}
+      {before.short !== after.short && (
+        <ScalarChange label="Short" before={before.short} after={after.short} />
+      )}
+      {before.detail !== after.detail && (
+        <ScalarChange label="Detail" before={before.detail} after={after.detail} />
+      )}
+    </article>
+  );
+}
+
+function RoleCollectionChange({
+  title,
+  before,
+  after,
+}: {
+  title: "Inputs" | "Outputs";
+  before: DerivationRole[];
+  after: DerivationRole[];
+}) {
+  const beforeByNode = new Map(before.map((role) => [role.node, role]));
+  const afterByNode = new Map(after.map((role) => [role.node, role]));
+  const removed = before.filter((role) => !afterByNode.has(role.node));
+  const added = after.filter((role) => !beforeByNode.has(role.node));
+  const changed = before.flatMap((role) => {
+    const current = afterByNode.get(role.node);
+    return current &&
+      (role.name !== current.name ||
+        role.short !== current.short ||
+        role.detail !== current.detail)
+      ? [{ before: role, after: current }]
+      : [];
+  });
+  return (
+    <section className="role-collection-change">
+      <h5>{title}</h5>
+      {added.length > 0 && (
+        <div className="role-change-group">
+          <h6>Added</h6>
+          <ul>
+            {added.map((role) => (
+              <RoleItem key={role.node} role={role} marker="+" />
+            ))}
+          </ul>
+        </div>
+      )}
+      {removed.length > 0 && (
+        <div className="role-change-group">
+          <h6>Removed</h6>
+          <ul>
+            {removed.map((role) => (
+              <RoleItem key={role.node} role={role} marker="-" />
+            ))}
+          </ul>
+        </div>
+      )}
+      {changed.map((change) => (
+        <ChangedRole key={change.before.node} {...change} />
+      ))}
+    </section>
+  );
+}
+
+function ChangedNodeItem({ change }: { change: ChangedNode }) {
+  const { selectGraphDiffElement } = useProject();
+  return (
+    <article className="changed-diff-item">
+      <button
+        className="current-diff-select"
+        type="button"
+        aria-label={`Select current Node ${change.after.name}`}
+        onClick={() =>
+          selectGraphDiffElement({ kind: "knowledge", id: change.id })
+        }
+      >
+        <strong>Select current Node</strong>
+        <code>{change.id}</code>
+      </button>
+      <div className="structural-changes">
+        <h4>Structural changes</h4>
+        {change.changed_fields.includes("name") && (
+          <ScalarChange
+            label="Name"
+            before={change.before.name}
+            after={change.after.name}
+          />
+        )}
+        {change.changed_fields.includes("files") && (
+          <FileSetChange
+            before={change.before.files}
+            after={change.after.files}
+          />
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ChangedDerivationItem({ change }: { change: ChangedDerivation }) {
+  const { selectGraphDiffElement } = useProject();
+  return (
+    <article className="changed-diff-item">
+      <button
+        className="current-diff-select"
+        type="button"
+        aria-label={`Select current Derivation ${change.after.short}`}
+        onClick={() =>
+          selectGraphDiffElement({ kind: "derivation", id: change.id })
+        }
+      >
+        <strong>Select current Derivation</strong>
+        <code>{change.id}</code>
+      </button>
+      <div className="structural-changes">
+        <h4>Structural changes</h4>
+        {change.changed_fields.includes("short") && (
+          <ScalarChange
+            label="Short"
+            before={change.before.short}
+            after={change.after.short}
+          />
+        )}
+        {change.changed_fields.includes("detail") && (
+          <ScalarChange
+            label="Detail"
+            before={change.before.detail}
+            after={change.after.detail}
+          />
+        )}
+        {change.changed_fields.includes("inputs") && (
+          <RoleCollectionChange
+            title="Inputs"
+            before={change.before.inputs}
+            after={change.after.inputs}
+          />
+        )}
+        {change.changed_fields.includes("outputs") && (
+          <RoleCollectionChange
+            title="Outputs"
+            before={change.before.outputs}
+            after={change.after.outputs}
+          />
+        )}
+      </div>
+    </article>
+  );
+}
+
 function NodeItem({
   node,
   selectable,
-  fields,
 }: {
   node: StructuralNode;
   selectable: boolean;
-  fields?: string[];
 }) {
   const { selectGraphDiffElement } = useProject();
   const content = (
     <>
       <strong>{node.name}</strong>
       <code>{node.id}</code>
-      {fields && <small>Changed: {fields.join(", ")}</small>}
       <small>{node.files.join(", ")}</small>
     </>
   );
@@ -40,11 +272,9 @@ function NodeItem({
 function DerivationItem({
   derivation,
   selectable,
-  fields,
 }: {
   derivation: DerivationResult;
   selectable: boolean;
-  fields?: string[];
 }) {
   const { selectGraphDiffElement } = useProject();
   const endpoints = [
@@ -55,7 +285,6 @@ function DerivationItem({
     <>
       <strong>{derivation.short}</strong>
       <code>{derivation.id}</code>
-      {fields && <small>Changed: {fields.join(", ")}</small>}
       {derivation.detail && <small>{derivation.detail}</small>}
       <small>{endpoints}</small>
     </>
@@ -123,12 +352,7 @@ function AvailableDiff({ result }: { result: GraphDiffResult }) {
       </DiffGroup>
       <DiffGroup title="Changed Nodes" count={summary.changed_nodes}>
         {result.nodes.changed.map((change: ChangedNode) => (
-          <NodeItem
-            key={change.id}
-            node={change.after}
-            fields={change.changed_fields}
-            selectable
-          />
+          <ChangedNodeItem key={change.id} change={change} />
         ))}
       </DiffGroup>
       <DiffGroup title="Added Derivations" count={summary.added_derivations}>
@@ -147,16 +371,11 @@ function AvailableDiff({ result }: { result: GraphDiffResult }) {
       </DiffGroup>
       <DiffGroup title="Changed Derivations" count={summary.changed_derivations}>
         {result.derivations.changed.map((change: ChangedDerivation) => (
-          <DerivationItem
-            key={change.id}
-            derivation={change.after}
-            fields={change.changed_fields}
-            selectable
-          />
+          <ChangedDerivationItem key={change.id} change={change} />
         ))}
       </DiffGroup>
       <p className={`topology-state ${summary.topology_changed ? "changed" : ""}`}>
-        Topology {summary.topology_changed ? "changed" : "unchanged"}.
+        Topological order {summary.topology_changed ? "changed" : "unchanged"}.
       </p>
     </div>
   );

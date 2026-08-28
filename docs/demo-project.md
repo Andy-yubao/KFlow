@@ -1,208 +1,115 @@
 # KFlow Human Interface Demo 项目
 
-本文记录 Human Interface 人工验证项目的位置、维护原则和可复制的 PowerShell 教程。后续收到“更新 Demo”任务时，应先阅读本文。
+本文记录 Human Interface 人工验证项目的位置、维护边界和可复制的 Graph Diff Demo 教程。后续收到“更新 Demo”任务时，应先阅读本文。
 
-## 默认位置与边界
+## 默认位置与维护边界
 
-Demo 默认位于：
+Demo 默认位于 KFlow 仓库外：
 
 ```text
 ../KFlow-human-interface-demo
 ```
 
-也就是：
+Demo 不进入 KFlow 仓库，不由 KFlow CI 管理，也不作为自动化测试夹具。普通未登记文件可以存在于 Demo 中，但不得自动进入项目图。
+
+Demo 不随每次功能开发自动维护。只有项目负责人明确要求时才更新 Demo 和本教程，以避免它成为第二套产品实现。
+
+## Demo 的有意 Git 状态
+
+Graph Diff 比较“当前工作区”与固定的 Git `HEAD`。因此此 Demo 的正确最终状态不是干净工作区：
+
+- `HEAD` 是完整、有效且已提交的 KFlow 基线图；
+- 当前工作区故意保留未提交的 `.kflow` 结构变化和新增文件；
+- 启动 UI 前不要提交这些变化，否则 `Graph Diff vs HEAD` 会变为空结果；
+- `notes/personal-note.md` 已提交但未登记，因而不会进入项目图。
+
+`topology_changed` 只比较前后两个稳定拓扑顺序。界面相应显示 `Topological order changed.` 或 `Topological order unchanged.`，这不等同于“所有边结构是否发生变化”。
+
+## 图结构与差异覆盖
+
+基线保留六个主要 Node：
 
 ```text
-<KFlow 仓库父目录>/KFlow-human-interface-demo
+requirements + constraints → architecture
+architecture + requirements → api-design + api-legacy-notes
+architecture → deployment-plan + testing-plan
+api-design → legacy-reference
 ```
 
-Demo 不放入 KFlow 仓库，不由 KFlow CI 管理，也不作为自动化测试夹具。它只用于人工验证 Human Interface、Node / Derivation 显示、状态变化、文件打开和典型多端关系。普通未登记文件可以存在于 Demo 中，但不得自动进入项目图。
+当前工作区仍覆盖：
 
-## 维护原则
-
-> Demo 不需要随每一次功能开发同步更新。只有项目负责人明确要求时才更新 Demo 和试用教程，以避免无意义维护和 token 消耗。
-
-## 默认图结构
-
-教程创建六个 Knowledge Node：
-
-```text
-requirements ─┐
-              ├─→ architecture ─→ api-design
-constraints  ─┘          │
-                          └─→ deployment-plan
-                              testing-plan
-```
-
-它覆盖：
-
-- N-to-1：`requirements + constraints → architecture`；
-- 1-to-1：`architecture → api-design`；
-- 1-to-N：`architecture → deployment-plan + testing-plan`；
+- N-to-1：`requirements + constraints → system-architecture`；
+- N-to-M：`system-architecture + constraints → api-design + api-release-notes`；
+- 1-to-N：`system-architecture → deployment-plan + testing-plan`；
+- 1-to-1：`deployment-plan → operations-guide`；
 - 未登记文件：`notes/personal-note.md`。
 
-N-to-M 由前端自动化测试覆盖。若要在 Demo 中人工验证 N-to-M，应新建没有 producer 的输出 Node，或用 N-to-M 替换 1-to-N；不能让 `deployment-plan`、`testing-plan` 同时由两个 Derivation 产生。
+当前未提交变化用于验证全部六类 Graph Diff：
 
-## 完整 PowerShell 教程
+- Added Node：`api-release-notes`、`operations-guide`；
+- Removed Node：`api-legacy-notes`、`legacy-reference`；
+- Changed Node：稳定 ID 的 `architecture` 改名为 `system-architecture`，文件从 `docs/architecture.md` 改为 `docs/architecture.svg` 与 `docs/system-architecture.md`；
+- Added Derivation：`deployment-plan → operations-guide`；
+- Removed Derivation：`api-design → legacy-reference`；
+- Changed Derivation：API Derivation 的 `short`、`detail`、inputs 和 outputs 都变化；稳定 role 展示字段修改，另有新增及删除 role。
 
-以下命令从 KFlow 仓库根目录执行。它们不会删除已有 Demo；若默认目录已存在，请先人工确认、备份或改用新目录。
+Node 改名还会让引用它的 Derivation role 名称随公共图结构一起变化，因此实际 Changed Derivation 数量为 3。这是预期的公开结构差异，不是重复关系。
 
-### 1. 创建独立项目和文件
+## 一次性构造脚本
+
+仓库中的 `scripts/setup_graph_diff_demo.py` 只用于创建外部 Demo，不属于生产运行路径。它复用 `KnowledgeGraph`、storage、confirm、validate 和 Graph Diff 公共实现，不复制领域校验，也不增加编辑或删除类 CLI 命令。
+
+从 KFlow 仓库根目录运行：
 
 ```powershell
-$kflowRepo = (Get-Location).Path
-$demoRoot = Join-Path (Split-Path $kflowRepo -Parent) "KFlow-human-interface-demo"
+$demoRoot = Join-Path (Split-Path (Get-Location).Path -Parent) "KFlow-human-interface-demo"
 if (Test-Path -LiteralPath $demoRoot) {
-    throw "Demo already exists: $demoRoot"
+    throw "Demo already exists; inspect and rename it before rebuilding: $demoRoot"
 }
 
-New-Item -ItemType Directory -Path $demoRoot | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $demoRoot "docs") | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $demoRoot "notes") | Out-Null
+python scripts/setup_graph_diff_demo.py $demoRoot
+```
+
+若 `python` 不是项目使用的 Python 3.11+ 解释器，请用实际解释器路径替换它。脚本拒绝覆盖已存在的目标目录；需要重建时，先确认它确实是 KFlow Demo，再把旧目录改名备份。脚本会：
+
+1. 创建并验证基线图；
+2. 确认全部基线 Node；
+3. 提交 `chore: create graph diff demo baseline`；
+4. 使用同一套领域模型写入当前合法图；
+5. 精确移除只属于历史基线的事实；
+6. 验证并输出完整 Graph Diff JSON，但不提交当前结构变化。
+
+## 命令行验证
+
+进入 Demo 后使用当前 KFlow 环境运行：
+
+```powershell
 Set-Location $demoRoot
-
-@'
-# Requirements
-
-The service must expose project structure locally without editing project files.
-'@ | Set-Content -LiteralPath "docs/requirements.md" -Encoding utf8
-
-@'
-# Constraints
-
-The service must bind to loopback and keep the Python runtime dependency-free.
-'@ | Set-Content -LiteralPath "docs/constraints.md" -Encoding utf8
-
-@'
-# Architecture
-
-The application separates domain queries, a local HTTP adapter, and a browser UI.
-'@ | Set-Content -LiteralPath "docs/architecture.md" -Encoding utf8
-
-@'
-# API Design
-
-The local adapter exposes narrowly scoped JSON endpoints for the Human Interface.
-'@ | Set-Content -LiteralPath "docs/api-design.md" -Encoding utf8
-
-@'
-# Deployment Plan
-
-The Python package distributes the production frontend assets.
-'@ | Set-Content -LiteralPath "docs/deployment-plan.md" -Encoding utf8
-
-@'
-# Testing Plan
-
-Automated and manual checks validate the graph, HTTP boundary, and packaged UI.
-'@ | Set-Content -LiteralPath "docs/testing-plan.md" -Encoding utf8
-
-@'
-# Personal Note
-
-This file intentionally remains outside the KFlow knowledge graph.
-'@ | Set-Content -LiteralPath "notes/personal-note.md" -Encoding utf8
-```
-
-### 2. 初始化 Git 与 KFlow
-
-```powershell
-git init
-git config user.name "KFlow Demo"
-git config user.email "kflow-demo@example.local"
-git add docs/requirements.md
-git add docs/constraints.md
-git add docs/architecture.md
-git add docs/api-design.md
-git add docs/deployment-plan.md
-git add docs/testing-plan.md
-git add notes/personal-note.md
-git commit -m "docs: create human interface demo files"
-
-kflow init
-kflow add-node requirements --file docs/requirements.md
-kflow add-node constraints --file docs/constraints.md
-kflow add-node architecture --file docs/architecture.md
-kflow add-node api-design --file docs/api-design.md
-kflow add-node deployment-plan --file docs/deployment-plan.md
-kflow add-node testing-plan --file docs/testing-plan.md
-```
-
-不要为 `notes/personal-note.md` 执行 `kflow add-node`。
-
-### 3. 建立 N-to-1、1-to-1 与 1-to-N
-
-```powershell
-kflow derive `
-  --short "Requirements and constraints shape architecture" `
-  --detail "Product goals and operating constraints jointly determine the structure." `
-  --input requirements "Provides product goals" `
-  --input constraints "Provides operating limits" `
-  --output architecture "Defines the system structure"
-
-kflow derive `
-  --short "Architecture defines API design" `
-  --detail "System boundaries determine the local interface." `
-  --input architecture "Provides component boundaries" `
-  --output api-design "Defines the local API"
-
-kflow derive `
-  --short "Architecture drives delivery plans" `
-  --detail "The same architecture informs deployment and testing." `
-  --input architecture "Provides runtime and component boundaries" `
-  --output deployment-plan "Defines packaging and launch" `
-  --output testing-plan "Defines verification coverage"
-
+kflow validate
 kflow overview
-kflow validate
+git status --short
 ```
 
-### 4. 建立基线并制造受影响状态
+验收标准：
 
-```powershell
-kflow scan
-kflow confirm requirements
-kflow confirm constraints
-kflow confirm architecture
-kflow confirm api-design
-kflow confirm deployment-plan
-kflow confirm testing-plan
-kflow validate
+- `kflow validate` 成功；
+- overview 中存在当前 8 个 Node 和 4 个 Derivation；
+- `git status --short` 显示与 Added / Removed / Changed 结构对应的未提交元数据及新增文件；
+- overview 的登记文件列表不包含 `notes/personal-note.md`；
+- Graph Diff 六类计数依次为 Node `2 / 2 / 1`、Derivation `1 / 1 / 3`；
+- Topological order 状态为 changed。
 
-git add .kflow/project.json
-git add .kflow/nodes
-git add .kflow/derivations
-git add .kflow/confirmations
-git commit -m "chore: register demo knowledge graph"
-
-@'
-
-## New Requirement
-
-The project view must expose a stable review order.
-'@ | Add-Content -LiteralPath "docs/requirements.md" -Encoding utf8
-
-kflow scan
-kflow status
-kflow context --affected
-kflow review-order
-```
-
-### 5. 验证未登记文件与启动界面
+可以用以下 PowerShell 检查未登记文件：
 
 ```powershell
 $overview = kflow overview --json | ConvertFrom-Json
-$overview.nodes.files | Should -Not -Contain "notes/personal-note.md"
-```
-
-如果当前 PowerShell 没有 Pester 的 `Should`，使用：
-
-```powershell
 $registeredFiles = @($overview.nodes | ForEach-Object { $_.files })
 if ($registeredFiles -contains "notes/personal-note.md") {
     throw "Unregistered file unexpectedly entered the graph"
 }
 ```
+
+## Human Interface 验证
 
 启动正式打包界面：
 
@@ -210,14 +117,15 @@ if ($registeredFiles -contains "notes/personal-note.md") {
 kflow ui
 ```
 
-人工检查：
+在 `Graph Diff vs HEAD` 中人工检查：
 
-- 六个 Knowledge Node 与三个 Derivation 正确显示；
-- Derivation 是边上的小连接点，悬停显示 `short`，单击显示完整 Inspector；
-- N-to-1、1-to-1、1-to-N 都只有一个 Derivation 中间节点；
-- Search、状态筛选、Only needs review 和直接上下游高亮有效；
-- Review Order 点击后定位并选中对应 Node；
-- Node 的 Open 只能打开已登记且仍位于项目内的普通文件；
+- HEAD 短 SHA 和 subject 与 `git log -1` 一致；
+- Added、Changed Node 和 Derivation 可定位当前画布；Removed 项不可选择当前画布；
+- Changed Node 显示名称的旧值 → 新值，并用 `-` / `+` 显示文件集合差异；
+- Changed Derivation 显示 short/detail 的旧值 → 新值；
+- inputs 和 outputs 分别显示 role 的 Added、Removed 和按 Node 对齐的 Changed 字段；
+- 文案为 `Topological order changed.`；
+- Search、Review Order、Inspector 和登记文件 Open 仍正常；
 - `notes/personal-note.md` 不出现在图中。
 
-结束服务使用 `Ctrl+C`。
+结束服务使用 `Ctrl+C`。不要在验收结束后顺手提交 Demo 当前变化；未提交状态正是这个 Graph Diff Demo 的设计要求。

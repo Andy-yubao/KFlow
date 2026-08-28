@@ -59,9 +59,17 @@ function result(): GraphDiffResult {
       changed: [
         {
           id: "nd_changed",
-          changed_fields: ["name"],
-          before: { id: "nd_changed", name: "Before", files: ["changed.md"] },
-          after: { id: "nd_changed", name: "Changed Node", files: ["changed.md"] },
+          changed_fields: ["name", "files"],
+          before: {
+            id: "nd_changed",
+            name: "Legacy Architecture",
+            files: ["docs/old.md", "docs/shared.md"],
+          },
+          after: {
+            id: "nd_changed",
+            name: "System Architecture",
+            files: ["docs/new.md", "docs/shared.md"],
+          },
         },
       ],
     },
@@ -71,13 +79,72 @@ function result(): GraphDiffResult {
       changed: [
         {
           id: "dv_changed",
-          changed_fields: ["detail"],
-          before: { ...derivation, id: "dv_changed", detail: "Before" },
-          after: {
-            ...derivation,
+          changed_fields: ["short", "detail", "inputs", "outputs"],
+          before: {
             id: "dv_changed",
-            short: "Changed Derivation",
-            detail: "After",
+            short: "Legacy API derivation",
+            detail: "",
+            inputs: [
+              {
+                node: "nd_requirements",
+                name: "Requirements",
+                short: "Provides goals",
+                detail: "",
+              },
+              {
+                node: "nd_legacy_input",
+                name: "Legacy input",
+                short: "Provides old limits",
+                detail: "Old detail",
+              },
+            ],
+            outputs: [
+              {
+                node: "nd_api",
+                name: "API",
+                short: "Defines endpoints",
+                detail: "",
+              },
+              {
+                node: "nd_legacy_output",
+                name: "Legacy output",
+                short: "Records old API",
+                detail: "Old output detail",
+              },
+            ],
+          },
+          after: {
+            id: "dv_changed",
+            short: "Validated API derivation",
+            detail: "Produces the current API contract.",
+            inputs: [
+              {
+                node: "nd_requirements",
+                name: "Product Requirements",
+                short: "Provides validated goals",
+                detail: "Includes acceptance criteria",
+              },
+              {
+                node: "nd_constraints",
+                name: "Constraints",
+                short: "Provides operating limits",
+                detail: "",
+              },
+            ],
+            outputs: [
+              {
+                node: "nd_api",
+                name: "Public API",
+                short: "Defines validated endpoints",
+                detail: "Includes response contracts",
+              },
+              {
+                node: "nd_release_notes",
+                name: "Release notes",
+                short: "Records current API",
+                detail: "",
+              },
+            ],
           },
         },
       ],
@@ -107,7 +174,7 @@ describe("GraphDiffPanel", () => {
     render(<GraphDiffPanel />);
 
     expect(screen.getByText("No structural graph changes since HEAD.")).toBeTruthy();
-    expect(screen.getByText("Topology unchanged.")).toBeTruthy();
+    expect(screen.getByText("Topological order unchanged.")).toBeTruthy();
   });
 
   it("shows counts and selects only current added or changed entities", async () => {
@@ -118,7 +185,7 @@ describe("GraphDiffPanel", () => {
     render(<GraphDiffPanel />);
 
     expect(screen.getByText("baseline graph")).toBeTruthy();
-    expect(screen.getByText("Topology changed.")).toBeTruthy();
+    expect(screen.getByText("Topological order changed.")).toBeTruthy();
     for (const label of [
       "Added Nodes",
       "Removed Nodes",
@@ -166,6 +233,36 @@ describe("GraphDiffPanel", () => {
       kind: "derivation",
       id: "dv_changed",
     });
+
+    for (const text of [
+      "Legacy Architecture",
+      "System Architecture",
+      "docs/old.md",
+      "docs/new.md",
+      "Legacy API derivation",
+      "Validated API derivation",
+      "Produces the current API contract.",
+      "Legacy input",
+      "Constraints",
+      "Requirements",
+      "Product Requirements",
+      "Provides goals",
+      "Provides validated goals",
+      "Legacy output",
+      "Release notes",
+      "API",
+      "Public API",
+      "Defines endpoints",
+      "Defines validated endpoints",
+    ]) {
+      expect(screen.getByText(text)).toBeTruthy();
+    }
+    expect(screen.getAllByText("None").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Inputs")).toHaveLength(1);
+    expect(screen.getAllByText("Outputs")).toHaveLength(1);
+    expect(screen.queryByText("docs/shared.md")).toBeNull();
+    expect(screen.getByText("docs/old.md").closest("li")?.textContent).toContain("-");
+    expect(screen.getByText("docs/new.md").closest("li")?.textContent).toContain("+");
     expect(screen.queryByRole("button", { name: /Removed Node/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Removed Derivation/ })).toBeNull();
     expect(screen.getByText("removed.md")).toBeTruthy();

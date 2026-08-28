@@ -38,6 +38,7 @@ registered project files (read bytes only for fingerprints)
 - `kflow/core/graph.py`、`status.py`、`versioning.py` 实现纯领域规则。
 - `kflow/core/storage.py`、`scan.py` 负责规范事实、扫描和确认。
 - `kflow/human/` 是本地只读 Human Interface 适配层，只通过公共 Query API 提供 HTTP JSON、受限本地文件打开动作和包内静态资源。
+- `kflow/human/git_snapshot.py` 以系统 Git 的固定 `HEAD` revision 构造自动清理的临时项目快照，并对快照调用公共 `query_project_graph()`；`kflow/human/graph_diff.py` 只负责两个 `ProjectGraphResult` 的纯结构比较。
 - `ui/` 是 React 前端源代码；布局、选择等 UI 状态不进入领域层。
 
 人类界面和 Agent 接口消费同一套领域事实与排序算法，不维护第二套状态逻辑。
@@ -232,7 +233,9 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 
 当前可靠性范围是单工作区、单写者。切换到任意 Git commit 后，应能仅凭该版本的规范元数据和项目文件重建拓扑与确认基线。
 
-未来历史与图差异查询以 Git ref/commit 为数据源，不新增 KFlow event sourcing 或快照数据库；当前阶段不实现按 Git ref 查询或图差异。
+历史与图差异以 Git ref/commit 为数据源，不新增 KFlow event sourcing 或快照数据库。当前阶段三首个增量只实现当前工作区相对固定 `HEAD` 的 Graph Diff MVP：Git adapter 通过 `git archive HEAD` 解压到临时目录，定位 Git 仓库内可能位于子目录的 KFlow 项目根，再调用公共 `query_project_graph()` 重建 HEAD 图。临时目录自动清理，Git 工作区不被 checkout 或修改。
+
+结构差异按稳定 ID 对齐 Node 与 Derivation。Node 只比较 `id`、`name`、`files`；Derivation 比较 `id`、`short`、`detail`、完整 `inputs` 和 `outputs` 角色；拓扑变化比较公共查询返回的确定性 `topological_order`。`status`、`reasons` 和 `changed_files` 是当前 review 状态，不属于结构历史差异。任意 revision、commit selector、历史时间线、Git patch、checkout 和编辑能力仍未实现。
 
 ## 9. 接口冻结
 

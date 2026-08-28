@@ -22,6 +22,8 @@ export interface GraphView {
   emphasizedNodeIds: string[];
   emphasizedEdgeIds: string[];
   hasFocus: boolean;
+  searchActive: boolean;
+  searchMatchCount: number;
 }
 
 function inputEdgeId(nodeId: string, derivationId: string): string {
@@ -129,7 +131,25 @@ export function buildGraphView(
   const emphasizedNodes = new Set<string>();
   const emphasizedEdges = new Set<string>();
   const normalizedSearch = options.searchText.trim().toLocaleLowerCase();
-  const hasFocus = options.selectedElement !== null || normalizedSearch.length > 0;
+  const searchActive = normalizedSearch.length > 0;
+  const matchingNodeIds = searchActive
+    ? project.nodes
+        .filter((node) =>
+          includesSearch([node.name, node.id, ...node.files], normalizedSearch),
+        )
+        .map((node) => node.id)
+    : [];
+  const matchingDerivationIds = searchActive
+    ? project.derivations
+        .filter((derivation) =>
+          includesSearch(
+            [derivation.id, derivation.short, derivation.detail],
+            normalizedSearch,
+          ),
+        )
+        .map((derivation) => derivation.id)
+    : [];
+  const searchMatchCount = matchingNodeIds.length + matchingDerivationIds.length;
 
   if (options.selectedElement?.kind === "knowledge") {
     addKnowledgeFocus(
@@ -143,19 +163,15 @@ export function buildGraphView(
       (candidate) => candidate.id === options.selectedElement?.id,
     );
     if (derivation) addDerivationFocus(derivation, emphasizedNodes, emphasizedEdges);
-  } else if (normalizedSearch) {
-    for (const node of project.nodes) {
-      if (includesSearch([node.name, node.id, ...node.files], normalizedSearch)) {
-        addKnowledgeFocus(node.id, project.derivations, emphasizedNodes, emphasizedEdges);
-      }
+  } else if (searchActive) {
+    for (const nodeId of matchingNodeIds) {
+      addKnowledgeFocus(nodeId, project.derivations, emphasizedNodes, emphasizedEdges);
     }
-    for (const derivation of project.derivations) {
-      if (
-        includesSearch(
-          [derivation.id, derivation.short, derivation.detail],
-          normalizedSearch,
-        )
-      ) {
+    for (const derivationId of matchingDerivationIds) {
+      const derivation = project.derivations.find(
+        (candidate) => candidate.id === derivationId,
+      );
+      if (derivation) {
         addDerivationFocus(derivation, emphasizedNodes, emphasizedEdges);
       }
     }
@@ -163,6 +179,8 @@ export function buildGraphView(
     visibleFlowNodes.forEach((id) => emphasizedNodes.add(id));
     visibleEdges.forEach((id) => emphasizedEdges.add(id));
   }
+  const hasFocus =
+    options.selectedElement !== null || (searchActive && searchMatchCount > 0);
 
   return {
     visibleKnowledgeNodeIds: [...visibleKnowledge].map(knowledgeFlowId),
@@ -171,5 +189,7 @@ export function buildGraphView(
     emphasizedNodeIds: [...emphasizedNodes].filter((id) => visibleFlowNodes.has(id)),
     emphasizedEdgeIds: [...emphasizedEdges].filter((id) => visibleEdges.has(id)),
     hasFocus,
+    searchActive,
+    searchMatchCount,
   };
 }

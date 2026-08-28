@@ -1,6 +1,7 @@
 import { useProject } from "../state/ProjectContext";
+import type { GraphView } from "../graph/graphView";
 
-export function GraphToolbar() {
+export function GraphToolbar({ view }: { view: GraphView }) {
   const {
     state,
     setSearchText,
@@ -19,6 +20,11 @@ export function GraphToolbar() {
           placeholder="Node, file, or Derivation"
           onChange={(event) => setSearchText(event.target.value)}
         />
+        {view.searchActive && view.searchMatchCount === 0 && (
+          <small className="search-no-results" role="status">
+            No matching Nodes or Derivations.
+          </small>
+        )}
       </label>
       <label className="filter-control">
         <span>Status</span>

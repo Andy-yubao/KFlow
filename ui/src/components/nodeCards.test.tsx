@@ -1,4 +1,5 @@
 import type { NodeProps } from "@xyflow/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -78,5 +79,47 @@ describe("graph node cards", () => {
     expect(markup).toContain(`title="${short}"`);
     expect(markup).toContain("derivation-mark");
     expect(markup).not.toContain("derivation-tooltip");
+  });
+
+  it("shows and hides the Derivation tooltip on pointer and keyboard interaction", () => {
+    const short = "A complete Derivation short description";
+    const derivation = {
+      id: "dv_design",
+      short,
+      detail: "Detailed meaning.",
+      inputs: [],
+      outputs: [],
+    };
+    const props = {
+      id: "derivation:dv_design",
+      type: "derivationNode",
+      data: { kind: "derivation" as const, derivation },
+      dragging: false,
+      zIndex: 0,
+      selectable: true,
+      deletable: false,
+      selected: false,
+      draggable: false,
+      isConnectable: false,
+      positionAbsoluteX: 0,
+      positionAbsoluteY: 0,
+    } satisfies NodeProps<DerivationFlowNode>;
+
+    render(<DerivationNodeCard {...props} />);
+    const card = screen.getByLabelText(`Derivation: ${short}`);
+    expect(card.getAttribute("title")).toBe(short);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.mouseEnter(card);
+    expect(screen.getByRole("tooltip").textContent).toBe(short);
+    fireEvent.mouseLeave(card);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.focus(card);
+    expect(screen.getByRole("tooltip").textContent).toBe(short);
+    fireEvent.blur(card);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(derivation).toEqual(props.data.derivation);
+    expect(card.className).not.toContain("selected");
   });
 });

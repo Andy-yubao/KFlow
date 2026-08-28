@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import unquote, urlsplit
 
 from kflow.core.query import query_affected_context, query_project_graph
+from kflow.human.git_snapshot import graph_diff_against_head
 
 LOOPBACK_ADDRESS = "127.0.0.1"
 SERVICE_NAME = "kflow-human-interface"
@@ -56,6 +57,9 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/api/review-order":
                 self._send_json(query_affected_context(root))
+                return
+            if path == "/api/graph-diff":
+                self._send_json(graph_diff_against_head(root))
                 return
             if path == "/api/open-file":
                 self._method_not_allowed("POST")

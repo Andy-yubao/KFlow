@@ -7,9 +7,13 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchProjectGraph, fetchReviewOrder } from "../api/project";
+import {
+  fetchGraphDiff,
+  fetchProjectGraph,
+  fetchReviewOrder,
+} from "../api/project";
 import type { StatusFilter } from "../graph/graphView";
-import type { ProjectGraphResult } from "../types/projectGraph";
+import type { GraphDiffResult, ProjectGraphResult } from "../types/projectGraph";
 
 export type SelectedElement =
   | { kind: "knowledge"; id: string }
@@ -19,6 +23,9 @@ export type SelectedElement =
 export interface ProjectState {
   projectGraph: ProjectGraphResult | null;
   reviewOrder: string[];
+  graphDiff: GraphDiffResult | null;
+  graphDiffLoading: boolean;
+  graphDiffError: string | null;
   loading: boolean;
   error: string | null;
   selectedElement: SelectedElement;
@@ -26,22 +33,30 @@ export interface ProjectState {
   statusFilter: StatusFilter;
   onlyNeedsReview: boolean;
   reviewOrderCollapsed: boolean;
+  graphDiffCollapsed: boolean;
 }
 
 export type ProjectAction =
   | { type: "loading" }
   | { type: "loaded"; graph: ProjectGraphResult; reviewOrder: string[] }
+  | { type: "graphDiffLoaded"; result: GraphDiffResult }
+  | { type: "graphDiffFailed"; message: string }
   | { type: "failed"; message: string }
   | { type: "selected"; element: SelectedElement }
   | { type: "reviewSelected"; nodeId: string }
+  | { type: "graphDiffSelected"; element: Exclude<SelectedElement, null> }
   | { type: "searchChanged"; value: string }
   | { type: "statusChanged"; value: StatusFilter }
   | { type: "needsReviewChanged"; value: boolean }
-  | { type: "reviewOrderToggled" };
+  | { type: "reviewOrderToggled" }
+  | { type: "graphDiffToggled" };
 
 export const initialProjectState: ProjectState = {
   projectGraph: null,
   reviewOrder: [],
+  graphDiff: null,
+  graphDiffLoading: true,
+  graphDiffError: null,
   loading: true,
   error: null,
   selectedElement: null,
@@ -49,6 +64,7 @@ export const initialProjectState: ProjectState = {
   statusFilter: "all",
   onlyNeedsReview: false,
   reviewOrderCollapsed: false,
+  graphDiffCollapsed: false,
 };
 
 export function projectReducer(
@@ -57,7 +73,13 @@ export function projectReducer(
 ): ProjectState {
   switch (action.type) {
     case "loading":
-      return { ...state, loading: true, error: null };
+      return {
+        ...state,
+        loading: true,
+        error: null,
+        graphDiffLoading: true,
+        graphDiffError: null,
+      };
     case "loaded":
       return {
         ...state,
@@ -66,6 +88,19 @@ export function projectReducer(
         loading: false,
         error: null,
         selectedElement: null,
+      };
+    case "graphDiffLoaded":
+      return {
+        ...state,
+        graphDiff: action.result,
+        graphDiffLoading: false,
+        graphDiffError: null,
+      };
+    case "graphDiffFailed":
+      return {
+        ...state,
+        graphDiffLoading: false,
+        graphDiffError: action.message,
       };
     case "failed":
       return { ...state, loading: false, error: action.message };
@@ -79,6 +114,14 @@ export function projectReducer(
         onlyNeedsReview: false,
         selectedElement: { kind: "knowledge", id: action.nodeId },
       };
+    case "graphDiffSelected":
+      return {
+        ...state,
+        searchText: "",
+        statusFilter: "all",
+        onlyNeedsReview: false,
+        selectedElement: action.element,
+      };
     case "searchChanged":
       return { ...state, searchText: action.value };
     case "statusChanged":
@@ -87,6 +130,8 @@ export function projectReducer(
       return { ...state, onlyNeedsReview: action.value };
     case "reviewOrderToggled":
       return { ...state, reviewOrderCollapsed: !state.reviewOrderCollapsed };
+    case "graphDiffToggled":
+      return { ...state, graphDiffCollapsed: !state.graphDiffCollapsed };
   }
 }
 
@@ -95,10 +140,12 @@ interface ProjectContextValue {
   reload: () => Promise<void>;
   select: (element: SelectedElement) => void;
   selectReviewNode: (nodeId: string) => void;
+  selectGraphDiffElement: (element: Exclude<SelectedElement, null>) => void;
   setSearchText: (value: string) => void;
   setStatusFilter: (value: StatusFilter) => void;
   setOnlyNeedsReview: (value: boolean) => void;
   toggleReviewOrder: () => void;
+  toggleGraphDiff: () => void;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -108,6 +155,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     dispatch({ type: "loading" });
+    const diffRequest = fetchGraphDiff()
+      .then((result) => dispatch({ type: "graphDiffLoaded", result }))
+      .catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Unknown Graph Diff error.";
+        dispatch({ type: "graphDiffFailed", message });
+      });
     try {
       const [graph, review] = await Promise.all([
         fetchProjectGraph(),
@@ -118,6 +172,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const message = error instanceof Error ? error.message : "Unknown network error.";
       dispatch({ type: "failed", message });
     }
+    await diffRequest;
   }, []);
 
   useEffect(() => {
@@ -131,6 +186,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const selectReviewNode = useCallback((nodeId: string) => {
     dispatch({ type: "reviewSelected", nodeId });
   }, []);
+  const selectGraphDiffElement = useCallback(
+    (element: Exclude<SelectedElement, null>) => {
+      dispatch({ type: "graphDiffSelected", element });
+    },
+    [],
+  );
   const setSearchText = useCallback((value: string) => {
     dispatch({ type: "searchChanged", value });
   }, []);
@@ -143,6 +204,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const toggleReviewOrder = useCallback(() => {
     dispatch({ type: "reviewOrderToggled" });
   }, []);
+  const toggleGraphDiff = useCallback(() => {
+    dispatch({ type: "graphDiffToggled" });
+  }, []);
 
   return (
     <ProjectContext.Provider
@@ -151,10 +215,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         reload,
         select,
         selectReviewNode,
+        selectGraphDiffElement,
         setSearchText,
         setStatusFilter,
         setOnlyNeedsReview,
         toggleReviewOrder,
+        toggleGraphDiff,
       }}
     >
       {children}

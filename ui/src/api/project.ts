@@ -1,10 +1,12 @@
 import type {
   OpenFileResult,
+  GraphDiffResult,
   ProjectGraphResult,
   ReviewOrderResult,
 } from "../types/projectGraph";
 
 const SUPPORTED_SCHEMA_VERSION = 2;
+const GRAPH_DIFF_SCHEMA_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -35,6 +37,34 @@ function parseReviewOrder(value: unknown): ReviewOrderResult {
     throw new Error("The review order endpoint returned an incompatible result.");
   }
   return value as unknown as ReviewOrderResult;
+}
+
+export function parseGraphDiff(value: unknown): GraphDiffResult {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== GRAPH_DIFF_SCHEMA_VERSION ||
+    typeof value.available !== "boolean" ||
+    !Array.isArray(value.issues) ||
+    !isRecord(value.nodes) ||
+    !Array.isArray(value.nodes.added) ||
+    !Array.isArray(value.nodes.removed) ||
+    !Array.isArray(value.nodes.changed) ||
+    !isRecord(value.derivations) ||
+    !Array.isArray(value.derivations.added) ||
+    !Array.isArray(value.derivations.removed) ||
+    !Array.isArray(value.derivations.changed) ||
+    !Array.isArray(value.before_topological_order) ||
+    !Array.isArray(value.after_topological_order)
+  ) {
+    throw new Error("The graph diff endpoint returned an incompatible result.");
+  }
+  if (value.available && (!isRecord(value.base) || !isRecord(value.summary))) {
+    throw new Error("The available graph diff is missing its base or summary.");
+  }
+  if (!value.available && (value.base !== null || value.summary !== null)) {
+    throw new Error("The unavailable graph diff has an invalid base or summary.");
+  }
+  return value as unknown as GraphDiffResult;
 }
 
 async function readJson(response: Response, endpoint: string): Promise<unknown> {
@@ -73,6 +103,20 @@ export async function fetchReviewOrder(
     throw new Error(`Review order request failed with HTTP ${response.status}.`);
   }
   return parseReviewOrder(await readJson(response, "review order"));
+}
+
+export async function fetchGraphDiff(
+  signal?: AbortSignal,
+): Promise<GraphDiffResult> {
+  const response = await fetch("/api/graph-diff", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Graph Diff request failed with HTTP ${response.status}.`);
+  }
+  return parseGraphDiff(await readJson(response, "graph diff"));
 }
 
 export async function openRegisteredFile(

@@ -114,7 +114,7 @@ const defaults = {
 describe("buildGraphView", () => {
   it.each([
     ["architecture", "node:nd_architecture"],
-    ["SYSTEM-ARCH", "node:nd_architecture"],
+    ["docs/system-architecture.md", "node:nd_architecture"],
     ["nd_require", "node:nd_requirements"],
     ["public api", "derivation:dv_api"],
     ["requirements and constraints", "derivation:dv_architecture"],
@@ -123,6 +123,46 @@ describe("buildGraphView", () => {
     const view = buildGraphView(project(), { ...defaults, searchText });
     expect(view.emphasizedNodeIds).toContain(hit);
     expect(view.hasFocus).toBe(true);
+    expect(view.searchActive).toBe(true);
+    expect(view.searchMatchCount).toBeGreaterThan(0);
+  });
+
+  it("treats search as case-insensitive and whitespace-only input as inactive", () => {
+    const matched = buildGraphView(project(), {
+      ...defaults,
+      searchText: "SYSTEM-ARCH",
+    });
+    expect(matched.emphasizedNodeIds).toContain("node:nd_architecture");
+
+    const whitespace = buildGraphView(project(), {
+      ...defaults,
+      searchText: "   ",
+    });
+    expect(whitespace.searchActive).toBe(false);
+    expect(whitespace.searchMatchCount).toBe(0);
+    expect(whitespace.hasFocus).toBe(false);
+  });
+
+  it("keeps normal opacity and reports zero matches for an unmatched search", () => {
+    const view = buildGraphView(project(), {
+      ...defaults,
+      searchText: "does-not-exist",
+    });
+    expect(view.searchActive).toBe(true);
+    expect(view.searchMatchCount).toBe(0);
+    expect(view.hasFocus).toBe(false);
+    expect(view.visibleKnowledgeNodeIds).toHaveLength(project().nodes.length);
+
+    const filtered = buildGraphView(project(), {
+      ...defaults,
+      searchText: "does-not-exist",
+      onlyNeedsReview: true,
+    });
+    expect(filtered.hasFocus).toBe(false);
+    expect(filtered.visibleKnowledgeNodeIds.sort()).toEqual([
+      "node:nd_architecture",
+      "node:nd_requirements",
+    ]);
   });
 
   it.each([

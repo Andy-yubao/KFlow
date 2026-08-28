@@ -120,6 +120,45 @@ def test_review_order_endpoint_matches_public_query(tmp_path) -> None:
     assert result["review_order"] == [architecture.id]
 
 
+def test_graph_diff_endpoint_returns_adapter_json_without_affecting_project(
+    tmp_path, monkeypatch
+) -> None:
+    initialize_project(tmp_path)
+    expected = {
+        "ok": True,
+        "available": False,
+        "schema_version": 1,
+        "base": None,
+        "summary": None,
+        "nodes": {"added": [], "removed": [], "changed": []},
+        "derivations": {"added": [], "removed": [], "changed": []},
+        "before_topological_order": [],
+        "after_topological_order": [],
+        "issues": [
+            {
+                "code": "git_history_unavailable",
+                "message": "No HEAD commit is available.",
+                "references": [],
+            }
+        ],
+    }
+    called = []
+
+    def graph_diff(root):
+        called.append(root)
+        return expected
+
+    monkeypatch.setattr(human_server, "graph_diff_against_head", graph_diff)
+
+    with running_ui(tmp_path) as (_server, base_url):
+        result = get_json(f"{base_url}/api/graph-diff")
+        project = get_json(f"{base_url}/api/project")
+
+    assert result == expected
+    assert called == [tmp_path.resolve()]
+    assert project == query_project_graph(tmp_path)
+
+
 def test_open_file_opens_registered_regular_file(tmp_path, monkeypatch) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -262,6 +301,10 @@ def test_unknown_post_and_other_unsupported_methods_return_405(tmp_path) -> None
     with running_ui(tmp_path) as (_server, base_url):
         for request, allow in (
             (Request(f"{base_url}/api/project", data=b"{}", method="POST"), "GET"),
+            (
+                Request(f"{base_url}/api/graph-diff", data=b"{}", method="POST"),
+                "GET",
+            ),
             (Request(f"{base_url}/api/open-file", data=b"{}", method="PUT"), "POST"),
             (Request(f"{base_url}/api/open-file", method="GET"), "POST"),
         ):

@@ -12,9 +12,12 @@ import {
 import { useEffect, useMemo } from "react";
 
 import { buildFlowGraph, type ProjectFlowNode } from "../graph/buildFlowGraph";
-import { buildGraphView } from "../graph/graphView";
+import type { GraphView } from "../graph/graphView";
 import { layoutProjectGraph } from "../graph/layoutGraph";
-import { useProject } from "../state/ProjectContext";
+import {
+  useProject,
+  type SelectedElement,
+} from "../state/ProjectContext";
 import type { ProjectGraphResult } from "../types/projectGraph";
 import { DerivationNodeCard } from "./DerivationNodeCard";
 import { KnowledgeNodeCard } from "./KnowledgeNodeCard";
@@ -28,25 +31,23 @@ const defaultEdgeOptions = {
   markerEnd: { type: MarkerType.ArrowClosed, color: "#8b9991" },
 };
 
-function ProjectGraphView({ graph }: { graph: ProjectGraphResult }) {
+export function selectedElementForFlowNode(
+  node: ProjectFlowNode,
+): Exclude<SelectedElement, null> {
+  return node.data.kind === "knowledge"
+    ? { kind: "knowledge", id: node.data.node.id }
+    : { kind: "derivation", id: node.data.derivation.id };
+}
+
+function ProjectGraphView({
+  graph,
+  view,
+}: {
+  graph: ProjectGraphResult;
+  view: GraphView;
+}) {
   const { state, select } = useProject();
   const { fitView } = useReactFlow();
-  const view = useMemo(
-    () =>
-      buildGraphView(graph, {
-        searchText: state.searchText,
-        statusFilter: state.statusFilter,
-        onlyNeedsReview: state.onlyNeedsReview,
-        selectedElement: state.selectedElement,
-      }),
-    [
-      graph,
-      state.onlyNeedsReview,
-      state.searchText,
-      state.selectedElement,
-      state.statusFilter,
-    ],
-  );
   const flow = useMemo(() => {
     const visibleNodes = new Set(view.visibleFlowNodeIds);
     const visibleEdges = new Set(view.visibleEdgeIds);
@@ -98,11 +99,7 @@ function ProjectGraphView({ graph }: { graph: ProjectGraphResult }) {
   }, [fitView, flow.nodes, state.selectedElement]);
 
   const onNodeClick: NodeMouseHandler<ProjectFlowNode> = (_event, node) => {
-    if (node.data.kind === "knowledge") {
-      select({ kind: "knowledge", id: node.data.node.id });
-    } else {
-      select({ kind: "derivation", id: node.data.derivation.id });
-    }
+    select(selectedElementForFlowNode(node));
   };
 
   return (
@@ -127,7 +124,13 @@ function ProjectGraphView({ graph }: { graph: ProjectGraphResult }) {
   );
 }
 
-export function GraphCanvas({ graph }: { graph: ProjectGraphResult }) {
+export function GraphCanvas({
+  graph,
+  view,
+}: {
+  graph: ProjectGraphResult;
+  view: GraphView;
+}) {
   if (graph.ok && graph.nodes.length === 0) {
     return (
       <section className="graph-empty">
@@ -151,7 +154,7 @@ export function GraphCanvas({ graph }: { graph: ProjectGraphResult }) {
   return (
     <section className="graph-canvas" aria-label="Project knowledge graph">
       <ReactFlowProvider>
-        <ProjectGraphView graph={graph} />
+        <ProjectGraphView graph={graph} view={view} />
       </ReactFlowProvider>
     </section>
   );

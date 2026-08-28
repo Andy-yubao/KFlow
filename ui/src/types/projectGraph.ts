@@ -45,3 +45,16 @@ export interface ProjectGraphResult {
   topological_order: string[];
   issues: QueryIssue[];
 }
+
+export interface ReviewOrderResult {
+  ok: boolean;
+  schema_version: number;
+  review_order: string[];
+  issues: QueryIssue[];
+}
+
+export interface OpenFileResult {
+  ok: boolean;
+  path: string | null;
+  issues?: QueryIssue[];
+}

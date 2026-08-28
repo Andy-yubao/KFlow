@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo } from "react";
 
 import { buildFlowGraph, type ProjectFlowNode } from "../graph/buildFlowGraph";
+import { buildGraphView } from "../graph/graphView";
 import { layoutProjectGraph } from "../graph/layoutGraph";
 import { useProject } from "../state/ProjectContext";
 import type { ProjectGraphResult } from "../types/projectGraph";
@@ -28,19 +29,73 @@ const defaultEdgeOptions = {
 };
 
 function ProjectGraphView({ graph }: { graph: ProjectGraphResult }) {
-  const { select } = useProject();
+  const { state, select } = useProject();
   const { fitView } = useReactFlow();
-  const flow = useMemo(
-    () => layoutProjectGraph(buildFlowGraph(graph)),
-    [graph],
+  const view = useMemo(
+    () =>
+      buildGraphView(graph, {
+        searchText: state.searchText,
+        statusFilter: state.statusFilter,
+        onlyNeedsReview: state.onlyNeedsReview,
+        selectedElement: state.selectedElement,
+      }),
+    [
+      graph,
+      state.onlyNeedsReview,
+      state.searchText,
+      state.selectedElement,
+      state.statusFilter,
+    ],
   );
+  const flow = useMemo(() => {
+    const visibleNodes = new Set(view.visibleFlowNodeIds);
+    const visibleEdges = new Set(view.visibleEdgeIds);
+    const emphasizedNodes = new Set(view.emphasizedNodeIds);
+    const emphasizedEdges = new Set(view.emphasizedEdgeIds);
+    const built = buildFlowGraph(graph);
+    const laidOut = layoutProjectGraph({
+      nodes: built.nodes.filter((node) => visibleNodes.has(node.id)),
+      edges: built.edges.filter((edge) => visibleEdges.has(edge.id)),
+    });
+    return {
+      nodes: laidOut.nodes.map((node) => ({
+        ...node,
+        selected:
+          state.selectedElement?.kind === node.data.kind &&
+          state.selectedElement.id ===
+            (node.data.kind === "knowledge"
+              ? node.data.node.id
+              : node.data.derivation.id),
+        className:
+          view.hasFocus && !emphasizedNodes.has(node.id) ? "is-dimmed" : "",
+      })),
+      edges: laidOut.edges.map((edge) => ({
+        ...edge,
+        className:
+          view.hasFocus && !emphasizedEdges.has(edge.id) ? "is-dimmed" : "",
+      })),
+    };
+  }, [graph, state.selectedElement, view]);
 
   useEffect(() => {
+    if (state.selectedElement !== null) return;
     const frame = window.requestAnimationFrame(() => {
       void fitView({ padding: 0.18, duration: 0 });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [fitView, flow.nodes]);
+  }, [fitView, flow.nodes, state.selectedElement]);
+
+  useEffect(() => {
+    if (state.selectedElement === null) return;
+    const selectedId =
+      state.selectedElement.kind === "knowledge"
+        ? `node:${state.selectedElement.id}`
+        : `derivation:${state.selectedElement.id}`;
+    const selectedNode = flow.nodes.find((node) => node.id === selectedId);
+    if (selectedNode) {
+      void fitView({ nodes: [selectedNode], padding: 0.8, maxZoom: 1.15, duration: 240 });
+    }
+  }, [fitView, flow.nodes, state.selectedElement]);
 
   const onNodeClick: NodeMouseHandler<ProjectFlowNode> = (_event, node) => {
     if (node.data.kind === "knowledge") {
@@ -57,6 +112,7 @@ function ProjectGraphView({ graph }: { graph: ProjectGraphResult }) {
       nodeTypes={nodeTypes}
       defaultEdgeOptions={defaultEdgeOptions}
       onNodeClick={onNodeClick}
+      onPaneClick={() => select(null)}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable

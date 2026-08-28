@@ -1,6 +1,8 @@
 import { GraphCanvas } from "./components/GraphCanvas";
+import { GraphToolbar } from "./components/GraphToolbar";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { ProjectSummary } from "./components/ProjectSummary";
+import { ReviewOrderPanel } from "./components/ReviewOrderPanel";
 import { useProject } from "./state/ProjectContext";
 
 function ReloadButton({ busy = false }: { busy?: boolean }) {
@@ -46,6 +48,7 @@ export default function App() {
         <p>Knowledge Nodes and complete Derivations from <code>query_project_graph()</code></p>
         <ReloadButton busy={loading} />
       </div>
+      <GraphToolbar />
       {!projectGraph.ok && (
         <section className="issues-banner" role="alert">
           <div>
@@ -65,7 +68,10 @@ export default function App() {
       {error && <div className="inline-error" role="alert">Reload failed: {error}</div>}
       <div className="workspace">
         <GraphCanvas graph={projectGraph} />
-        <InspectorPanel graph={projectGraph} selected={selectedElement} />
+        <div className="side-panels">
+          <InspectorPanel graph={projectGraph} selected={selectedElement} />
+          <ReviewOrderPanel graph={projectGraph} />
+        </div>
       </div>
     </main>
   );

@@ -1,3 +1,6 @@
+import { useState } from "react";
+
+import { openRegisteredFile } from "../api/project";
 import type { ProjectGraphResult } from "../types/projectGraph";
 import type { SelectedElement } from "../state/ProjectContext";
 
@@ -14,6 +17,19 @@ function TextList({ items, empty = "None" }: { items: string[]; empty?: string }
 }
 
 export function InspectorPanel({ graph, selected }: InspectorProps) {
+  const [openStatus, setOpenStatus] = useState<Record<string, string>>({});
+
+  const openFile = async (path: string) => {
+    setOpenStatus((current) => ({ ...current, [path]: "Opening…" }));
+    try {
+      await openRegisteredFile(path);
+      setOpenStatus((current) => ({ ...current, [path]: "Opened" }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to open file.";
+      setOpenStatus((current) => ({ ...current, [path]: message }));
+    }
+  };
+
   if (selected === null) {
     return (
       <aside className="inspector">
@@ -40,7 +56,18 @@ export function InspectorPanel({ graph, selected }: InspectorProps) {
         </div>
         <section><h3>Status</h3><p>{node.status ?? "unknown"}</p></section>
         <section><h3>Reasons</h3><TextList items={node.reasons} /></section>
-        <section><h3>Files</h3><TextList items={node.files} /></section>
+        <section>
+          <h3>Files</h3>
+          <ul className="file-list">
+            {node.files.map((path) => (
+              <li key={path}>
+                <code>{path}</code>
+                <button type="button" onClick={() => void openFile(path)}>Open</button>
+                {openStatus[path] && <small aria-live="polite">{openStatus[path]}</small>}
+              </li>
+            ))}
+          </ul>
+        </section>
         <section><h3>Changed files</h3><TextList items={node.changed_files} /></section>
       </aside>
     );

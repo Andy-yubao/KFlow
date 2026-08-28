@@ -2,16 +2,20 @@
 
 import json
 import mimetypes
+import os
+import subprocess
+import sys
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import unquote, urlsplit
 
-from kflow.core.query import query_project_graph
+from kflow.core.query import query_affected_context, query_project_graph
 
 LOOPBACK_ADDRESS = "127.0.0.1"
 SERVICE_NAME = "kflow-human-interface"
+MAX_JSON_BODY_BYTES = 64 * 1024
 
 
 def create_ui_server(root: Path, port: int = 0) -> ThreadingHTTPServer:
@@ -50,10 +54,20 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             if path == "/api/project":
                 self._send_json(query_project_graph(root))
                 return
+            if path == "/api/review-order":
+                self._send_json(query_affected_context(root))
+                return
+            if path == "/api/open-file":
+                self._method_not_allowed("POST")
+                return
             self._serve_static(path)
 
         def do_POST(self) -> None:  # noqa: N802
-            self._method_not_allowed()
+            path = urlsplit(self.path).path
+            if path == "/api/open-file":
+                self._open_file()
+                return
+            self._method_not_allowed("GET")
 
         def do_PUT(self) -> None:  # noqa: N802
             self._method_not_allowed()
@@ -70,7 +84,50 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
         def do_OPTIONS(self) -> None:  # noqa: N802
             self._method_not_allowed()
 
-        def _send_json(self, result: dict) -> None:
+        def _open_file(self) -> None:
+            request, issue = self._read_json_object()
+            if issue is not None:
+                self._send_json(_open_file_error(None, *issue), status=400)
+                return
+
+            requested_path = request.get("path")
+            candidate, issue = _resolve_registered_file(root, requested_path)
+            if issue is not None:
+                path = requested_path if isinstance(requested_path, str) else None
+                self._send_json(_open_file_error(path, *issue), status=400)
+                return
+
+            assert candidate is not None
+            try:
+                _open_registered_file(candidate)
+            except (OSError, subprocess.SubprocessError) as error:
+                self._send_json(
+                    _open_file_error(
+                        requested_path,
+                        "open_failed",
+                        f"unable to open registered file: {error}",
+                    ),
+                    status=500,
+                )
+                return
+            self._send_json({"ok": True, "path": requested_path})
+
+        def _read_json_object(self) -> tuple[dict, tuple[str, str] | None]:
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return {}, ("invalid_request", "invalid Content-Length")
+            if content_length <= 0 or content_length > MAX_JSON_BODY_BYTES:
+                return {}, ("invalid_request", "request body size is invalid")
+            try:
+                value = json.loads(self.rfile.read(content_length))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return {}, ("invalid_request", "request body must be valid JSON")
+            if not isinstance(value, dict):
+                return {}, ("invalid_request", "request body must be a JSON object")
+            return value, None
+
+        def _send_json(self, result: dict, *, status: int = 200) -> None:
             body = json.dumps(
                 result,
                 ensure_ascii=False,
@@ -78,7 +135,7 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 separators=(",", ":"),
             ).encode("utf-8")
             self._send_bytes(
-                200,
+                status,
                 body,
                 "application/json; charset=utf-8",
                 cache_control="no-store",
@@ -104,7 +161,7 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 cache_control="no-cache",
             )
 
-        def _method_not_allowed(self) -> None:
+        def _method_not_allowed(self, allow: str | None = None) -> None:
             try:
                 content_length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -112,7 +169,10 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             if content_length > 0:
                 self.rfile.read(content_length)
             self.send_response(405)
-            self.send_header("Allow", "GET")
+            allowed_method = allow or (
+                "POST" if urlsplit(self.path).path == "/api/open-file" else "GET"
+            )
+            self.send_header("Allow", allowed_method)
             self.send_header("Connection", "close")
             body = b"Method Not Allowed\n"
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -141,6 +201,78 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             return
 
     return HumanInterfaceHandler
+
+
+def _open_file_error(path: str | None, code: str, message: str) -> dict:
+    return {
+        "ok": False,
+        "path": path,
+        "issues": [
+            {
+                "code": code,
+                "message": message,
+                "references": [] if path is None else [path],
+            }
+        ],
+    }
+
+
+def _resolve_registered_file(
+    root: Path, requested_path: object
+) -> tuple[Path | None, tuple[str, str] | None]:
+    if not isinstance(requested_path, str) or not requested_path:
+        return None, ("invalid_path", "path must be a non-empty string")
+
+    parsed = urlsplit(requested_path)
+    posix_path = PurePosixPath(requested_path)
+    windows_path = PureWindowsPath(requested_path)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or "\\" in requested_path
+        or any(part in {"", ".", ".."} for part in posix_path.parts)
+    ):
+        return None, ("invalid_path", "path must be a safe project-relative path")
+
+    project = query_project_graph(root)
+    registered_files = {
+        file_path for node in project["nodes"] for file_path in node["files"]
+    }
+    if requested_path not in registered_files:
+        return None, (
+            "unregistered_file",
+            "path is not registered in the project graph",
+        )
+
+    project_root = Path(root).resolve()
+    candidate = project_root.joinpath(*posix_path.parts)
+    if not candidate.exists():
+        return None, ("file_not_found", "registered file does not exist")
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(project_root)
+    except (OSError, ValueError):
+        return None, (
+            "path_outside_project",
+            "registered file resolves outside the project",
+        )
+    if not resolved.is_file():
+        return None, ("not_regular_file", "registered path is not a regular file")
+    return resolved, None
+
+
+def _open_registered_file(path: Path) -> None:
+    """Open one validated registered file with the platform default application."""
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+        return
+    command = (
+        ["open", str(path)] if sys.platform == "darwin" else ["xdg-open", str(path)]
+    )
+    subprocess.run(command, check=True)
 
 
 def _safe_static_path(request_path: str) -> PurePosixPath | None:

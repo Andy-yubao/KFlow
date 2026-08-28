@@ -8,7 +8,7 @@ import type {
 
 // Must match the fixed card dimensions in styles.css.
 export const KNOWLEDGE_NODE_SIZE = { width: 240, height: 120 };
-export const DERIVATION_NODE_SIZE = { width: 210, height: 96 };
+export const DERIVATION_NODE_SIZE = { width: 32, height: 32 };
 
 function nodeSize(node: ProjectFlowNode) {
   return node.type === "derivationNode"

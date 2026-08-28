@@ -37,7 +37,7 @@ registered project files (read bytes only for fingerprints)
 - `kflow/core/query.py` 提供完整项目图、context、impact 和 affected context。
 - `kflow/core/graph.py`、`status.py`、`versioning.py` 实现纯领域规则。
 - `kflow/core/storage.py`、`scan.py` 负责规范事实、扫描和确认。
-- `kflow/human/` 是本地只读 Human Interface 适配层，只通过公共 Query API 提供 HTTP JSON 和包内静态资源。
+- `kflow/human/` 是本地只读 Human Interface 适配层，只通过公共 Query API 提供 HTTP JSON、受限本地文件打开动作和包内静态资源。
 - `ui/` 是 React 前端源代码；布局、选择等 UI 状态不进入领域层。
 
 人类界面和 Agent 接口消费同一套领域事实与排序算法，不维护第二套状态逻辑。
@@ -243,6 +243,7 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 - Agent 适配层不得复制影响传播或排序算法。
 - Human Interface 必须调用完整项目图公共查询，不得直接读取 `.kflow` JSON 后复制领域、状态、Derivation 序列化或排序逻辑。
 - `kflow/human/` 和 `ui/` 不属于领域层，不得把画布坐标、选择或加载状态写入 Core。
+- Human Interface 不修改 KFlow 元数据和项目文件。它允许有限的本地只读辅助动作，例如打开已经登记、真实存在且解析后仍位于项目根目录内的普通文件；不得接受任意路径、程序、命令或 shell 参数。
 
 ## 10. 当前明确排除
 

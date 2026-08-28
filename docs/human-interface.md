@@ -39,7 +39,7 @@ kflow ui
 → 在 127.0.0.1 的随机空闲端口启动服务
 → 输出本地 URL 并默认打开浏览器
 → 浏览器加载包内静态资源
-→ 前端请求 GET /api/project
+→ 前端请求 GET /api/project 与 GET /api/review-order
 → 服务端在每次请求时调用 query_project_graph(root)
 → 前端转换并布局 Knowledge Node 与 Derivation
 → 用户在单页图和 Inspector 中只读查看项目
@@ -49,14 +49,18 @@ kflow ui
 
 ## 5. API
 
-第一阶段只有两个正式端点：
+当前正式端点：
 
 ```text
 GET /api/health
 GET /api/project
+GET /api/review-order
+POST /api/open-file
 ```
 
-`GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
+`GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_affected_context(root)`，前端不重新计算影响范围或检查顺序。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
+
+`POST /api/open-file` 只接受一个已出现在当前 `ProjectGraphResult.nodes[*].files` 中的规范项目相对路径，并再次确认它真实存在、是普通文件且解析后仍位于项目根目录内。绝对路径、`..`、URL、目录、不存在文件、项目外符号链接、未登记文件和任意命令均被拒绝。服务只调用操作系统默认打开能力，不接受用户指定程序，也不使用 shell。
 
 ## 6. 图语义
 
@@ -83,21 +87,24 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 ## 8. 本地服务边界
 
 - 固定绑定 `127.0.0.1`，默认使用操作系统分配的随机端口，不提供远程监听选项。
-- 只提供 GET；无写入 API、账户、登录、认证或宽泛 CORS。
+- Human Interface 不修改 KFlow 元数据和项目文件。它允许有限的本地只读辅助动作，例如打开已经登记的文件。
+- 除受限的 `POST /api/open-file` 外不提供 POST；未知 POST 和其他修改方法返回 405。服务没有账户、登录、认证或宽泛 CORS。
 - 静态文件只能来自 Python 包内的 `kflow/human/static/`，请求路径不能越出该目录。
 - 该服务只用于本机项目查看，不是生产互联网服务器。
 
-## 9. 当前 MVP
+## 9. 当前能力
 
-当前版本提供单页面项目摘要、完整知识图、缩放、平移、fit view、Knowledge Node 与 Derivation 选择、详情 Inspector、错误/空项目状态以及手动 Reload。页面只读取 `/api/project`，不显示文件正文，也不提供确认或编辑控件。
+当前版本提供单页面项目摘要、完整知识图、缩放、平移、fit view、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open、错误/空项目状态以及手动 Reload。
 
-当前不实现搜索、筛选、影响高亮、独立 review order、Git 历史或 diff、编辑、confirm、正文预览、自动摘要、自动轮询、watcher、WebSocket、远程访问和桌面封装。
+Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。悬停显示 `short` 的轻量 tooltip，单击后 Inspector 显示 ID、完整语义和全部输入输出角色。搜索只降低非命中上下文的透明度；状态与 needs-review 筛选控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
+
+当前不实现 Git 历史或 diff、编辑、confirm、正文预览、自动摘要、自动轮询、watcher、WebSocket、远程访问和桌面封装。
 
 ## 10. 后续演进
 
 ```text
 阶段 1：只读项目图
-阶段 2：搜索、筛选、影响高亮和 review order
+阶段 2：搜索、筛选、直接邻接高亮和 review order（已完成）
 阶段 3：Git-backed graph history / diff
 阶段 4：经过单独设计后再评估编辑能力
 阶段 5：有实际分发需求后再评估 Tauri

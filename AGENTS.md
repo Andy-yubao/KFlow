@@ -23,6 +23,7 @@ KFlow 不存储或返回文档正文，不是文档编辑器、通用语义检�
 - Human Interface 必须消费 `query_project_graph`，不得直接读取 `.kflow` JSON 后复制图、状态、Derivation 序列化或拓扑排序逻辑，也不得把加载、选择或画布坐标等 UI 状态塞入 Core。
 - `kflow/human/static/` 是由 `ui/` 的 Vite build 生成并随 Python 包分发的资源，不手动编辑；`ui/node_modules/` 不进入 Git。
 - 当前 Human Interface 只读。除非用户明确授权，不要扩展编辑、Git 历史/diff、watcher、远程服务、MCP 或桌面封装。
+- Human Interface Demo 的说明与试用教程见 `docs/demo-project.md`，默认位于仓库外的 `../KFlow-human-interface-demo`。Demo 不自动维护；只有用户明确要求时才更新 Demo 和教程。
 - `docs/history/` 只保存历史决策材料，不定义当前产品行为。
 
 ## 权威文档

@@ -37,7 +37,7 @@ kflow --help
 kflow ui
 ```
 
-服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。该界面只显示公共项目图，不提供编辑或写入 API。
+服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。界面提供搜索、状态筛选、待检查范围、直接邻接高亮和来自 Core 的 Review Order；它不修改 KFlow 元数据或项目文件，只允许打开已经登记且仍位于项目内的普通文件。
 
 ## 五分钟快速开始
 
@@ -212,6 +212,7 @@ Node、Derivation 和 Confirmation 是 Git 跟踪的共享事实；cache、runti
 - [KFlow 使用指南](docs/kflow_skills.md)
 - [适配层说明](docs/agent-integration.md)
 - [Human Interface 架构](docs/human-interface.md)
+- [Human Interface Demo 教程](docs/demo-project.md)
 
 历史设计材料集中在 `docs/history/`，仅用于追溯，不定义当前产品行为。
 

@@ -55,11 +55,78 @@ function manyToManyProject(): ProjectGraphResult {
   };
 }
 
+function projectShape(inputCount: number, outputCount: number): ProjectGraphResult {
+  const inputs = Array.from({ length: inputCount }, (_, index) => `i${index + 1}`);
+  const outputs = Array.from({ length: outputCount }, (_, index) => `o${index + 1}`);
+  const ids = [...inputs, ...outputs];
+  return {
+    ...manyToManyProject(),
+    project: {
+      ...manyToManyProject().project,
+      node_count: ids.length,
+      needs_review_count: ids.length,
+    },
+    nodes: ids.map((id) => ({
+      id: `nd_${id}`,
+      name: id.toUpperCase(),
+      files: [`docs/${id}.md`],
+      changed_files: [],
+      status: "valid",
+      reasons: ["unconfirmed"],
+    })),
+    derivations: [
+      {
+        ...manyToManyProject().derivations[0],
+        inputs: inputs.map((id) => ({
+          node: `nd_${id}`,
+          name: id.toUpperCase(),
+          short: `Input ${id}`,
+          detail: "",
+        })),
+        outputs: outputs.map((id) => ({
+          node: `nd_${id}`,
+          name: id.toUpperCase(),
+          short: `Output ${id}`,
+          detail: "",
+        })),
+      },
+    ],
+    topological_order: ids.map((id) => `nd_${id}`),
+  };
+}
+
 describe("buildFlowGraph", () => {
   it("keeps Dagre dimensions aligned with the fixed card sizes", () => {
     expect(KNOWLEDGE_NODE_SIZE).toEqual({ width: 240, height: 120 });
-    expect(DERIVATION_NODE_SIZE).toEqual({ width: 210, height: 96 });
+    expect(DERIVATION_NODE_SIZE).toEqual({ width: 32, height: 32 });
+    expect(DERIVATION_NODE_SIZE.width).toBeLessThanOrEqual(48);
+    expect(DERIVATION_NODE_SIZE.width).toBeLessThan(
+      KNOWLEDGE_NODE_SIZE.width / 4,
+    );
   });
+
+  it.each([
+    ["1-to-1", 1, 1],
+    ["1-to-N", 1, 2],
+    ["N-to-1", 2, 1],
+    ["N-to-M", 2, 2],
+  ])(
+    "keeps %s as one Derivation with role edges rather than Cartesian edges",
+    (_label, inputCount, outputCount) => {
+      const graph = buildFlowGraph(projectShape(inputCount, outputCount));
+
+      expect(
+        graph.nodes.filter((node) => node.type === "derivationNode"),
+      ).toHaveLength(1);
+      expect(graph.edges.filter((edge) => edge.data?.kind === "input")).toHaveLength(
+        inputCount,
+      );
+      expect(
+        graph.edges.filter((edge) => edge.data?.kind === "output"),
+      ).toHaveLength(outputCount);
+      expect(graph.edges).toHaveLength(inputCount + outputCount);
+    },
+  );
 
   it("keeps a many-to-many Derivation as one first-class node", () => {
     const graph = buildFlowGraph(manyToManyProject());

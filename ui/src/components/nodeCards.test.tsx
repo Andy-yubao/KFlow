@@ -41,7 +41,7 @@ describe("graph node cards", () => {
       positionAbsoluteX: 0,
       positionAbsoluteY: 0,
     };
-    const markup = renderToStaticMarkup(KnowledgeNodeCard(props));
+    const markup = renderToStaticMarkup(<KnowledgeNodeCard {...props} />);
 
     expect(markup).toContain(`title="${name}"`);
     expect(markup).toContain("knowledge-node unknown");
@@ -73,8 +73,10 @@ describe("graph node cards", () => {
       positionAbsoluteX: 0,
       positionAbsoluteY: 0,
     };
-    const markup = renderToStaticMarkup(DerivationNodeCard(props));
+    const markup = renderToStaticMarkup(<DerivationNodeCard {...props} />);
 
     expect(markup).toContain(`title="${short}"`);
+    expect(markup).toContain("derivation-mark");
+    expect(markup).not.toContain("derivation-tooltip");
   });
 });

@@ -4,6 +4,8 @@ import type {
   DerivationResult,
   DerivationRole,
   GraphDiffSummary,
+  GitHistoryCommit,
+  GitHistoryResult,
   OpenFileResult,
   GraphDiffResult,
   ProjectGraphResult,
@@ -13,7 +15,8 @@ import type {
 } from "../types/projectGraph";
 
 const SUPPORTED_SCHEMA_VERSION = 2;
-const GRAPH_DIFF_SCHEMA_VERSION = 1;
+const GRAPH_DIFF_SCHEMA_VERSION = 2;
+const GIT_HISTORY_SCHEMA_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -25,6 +28,10 @@ function isStringArray(value: unknown): value is string[] {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isCommitId(value: unknown): value is string {
+  return isNonEmptyString(value) && /^[0-9a-f]+$/i.test(value);
 }
 
 function isQueryIssue(value: unknown): value is QueryIssue {
@@ -122,10 +129,21 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isGraphDiffBase(value: unknown): boolean {
   return (
     isRecord(value) &&
-    value.revision === "HEAD" &&
-    isNonEmptyString(value.commit) &&
+    isNonEmptyString(value.reference) &&
+    isCommitId(value.commit) &&
     isNonEmptyString(value.short_commit) &&
-    typeof value.subject === "string"
+    typeof value.subject === "string" &&
+    typeof value.committed_at === "string"
+  );
+}
+
+function isGitHistoryCommit(value: unknown): value is GitHistoryCommit {
+  return (
+    isRecord(value) &&
+    isCommitId(value.commit) &&
+    isNonEmptyString(value.short_commit) &&
+    typeof value.subject === "string" &&
+    typeof value.committed_at === "string"
   );
 }
 
@@ -211,10 +229,53 @@ export function parseGraphDiff(value: unknown): GraphDiffResult {
     ) {
       throw new Error("The graph diff endpoint returned an incompatible result.");
     }
-  } else if (value.base !== null || value.summary !== null) {
-    throw new Error("The graph diff endpoint returned an incompatible result.");
+  } else {
+    if (
+      value.base !== null ||
+      value.summary !== null ||
+      value.nodes.added.length > 0 ||
+      value.nodes.removed.length > 0 ||
+      value.nodes.changed.length > 0 ||
+      value.derivations.added.length > 0 ||
+      value.derivations.removed.length > 0 ||
+      value.derivations.changed.length > 0 ||
+      value.before_topological_order.length > 0 ||
+      value.after_topological_order.length > 0
+    ) {
+      throw new Error("The graph diff endpoint returned an incompatible result.");
+    }
   }
   return value as unknown as GraphDiffResult;
+}
+
+export function parseGitHistory(value: unknown): GitHistoryResult {
+  if (
+    !isRecord(value) ||
+    typeof value.ok !== "boolean" ||
+    typeof value.available !== "boolean" ||
+    value.schema_version !== GIT_HISTORY_SCHEMA_VERSION ||
+    !Array.isArray(value.issues) ||
+    !value.issues.every(isQueryIssue) ||
+    !Array.isArray(value.commits) ||
+    !value.commits.every(isGitHistoryCommit)
+  ) {
+    throw new Error("The Git history endpoint returned an incompatible result.");
+  }
+  const commitIds = value.commits.map((commit) => commit.commit);
+  if (new Set(commitIds).size !== commitIds.length) {
+    throw new Error("The Git history endpoint returned an incompatible result.");
+  }
+  if (value.available) {
+    if (
+      !isGitHistoryCommit(value.head) ||
+      commitIds.includes(value.head.commit)
+    ) {
+      throw new Error("The Git history endpoint returned an incompatible result.");
+    }
+  } else if (value.head !== null || value.commits.length > 0) {
+    throw new Error("The Git history endpoint returned an incompatible result.");
+  }
+  return value as unknown as GitHistoryResult;
 }
 
 async function readJson(response: Response, endpoint: string): Promise<unknown> {
@@ -256,9 +317,15 @@ export async function fetchReviewOrder(
 }
 
 export async function fetchGraphDiff(
+  base?: string,
   signal?: AbortSignal,
 ): Promise<GraphDiffResult> {
-  const response = await fetch("/api/graph-diff", {
+  let endpoint = "/api/graph-diff";
+  if (base && base !== "HEAD") {
+    const parameters = new URLSearchParams({ base });
+    endpoint = `${endpoint}?${parameters.toString()}`;
+  }
+  const response = await fetch(endpoint, {
     method: "GET",
     headers: { Accept: "application/json" },
     signal,
@@ -267,6 +334,20 @@ export async function fetchGraphDiff(
     throw new Error(`Graph Diff request failed with HTTP ${response.status}.`);
   }
   return parseGraphDiff(await readJson(response, "graph diff"));
+}
+
+export async function fetchGitHistory(
+  signal?: AbortSignal,
+): Promise<GitHistoryResult> {
+  const response = await fetch("/api/git-history", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Git history request failed with HTTP ${response.status}.`);
+  }
+  return parseGitHistory(await readJson(response, "Git history"));
 }
 
 export async function openRegisteredFile(

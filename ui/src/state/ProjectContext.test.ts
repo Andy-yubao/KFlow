@@ -60,6 +60,7 @@ describe("projectReducer", () => {
     const failed = projectReducer(loaded, {
       type: "graphDiffFailed",
       message: "Git unavailable",
+      requestId: 0,
     });
     expect(failed.projectGraph).toBe(graph);
     expect(failed.error).toBeNull();
@@ -71,5 +72,43 @@ describe("projectReducer", () => {
       projectReducer(initialProjectState, { type: "graphDiffToggled" })
         .graphDiffCollapsed,
     ).toBe(true);
+  });
+
+  it("tracks Graph Diff requests and ignores an older response", () => {
+    const loading = projectReducer(initialProjectState, {
+      type: "graphDiffLoading",
+      base: "a".repeat(40),
+      requestId: 2,
+    });
+    const staleResult = { schema_version: 2 } as never;
+    const stale = projectReducer(loading, {
+      type: "graphDiffLoaded",
+      result: staleResult,
+      requestId: 1,
+    });
+    expect(stale.graphDiff).toBeNull();
+    expect(stale.selectedGraphDiffBase).toBe("a".repeat(40));
+    expect(stale.graphDiffLoading).toBe(true);
+
+    const latestResult = { schema_version: 2 } as never;
+    const latest = projectReducer(stale, {
+      type: "graphDiffLoaded",
+      result: latestResult,
+      requestId: 2,
+    });
+    expect(latest.graphDiff).toBe(latestResult);
+    expect(latest.graphDiffLoading).toBe(false);
+  });
+
+  it("stores history separately from the main project error", () => {
+    const history = { schema_version: 1 } as never;
+    const loaded = projectReducer(initialProjectState, {
+      type: "gitHistoryLoaded",
+      result: history,
+      selectedBase: "HEAD",
+    });
+    expect(loaded.gitHistory).toBe(history);
+    expect(loaded.selectedGraphDiffBase).toBe("HEAD");
+    expect(loaded.error).toBeNull();
   });
 });

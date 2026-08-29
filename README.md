@@ -37,7 +37,7 @@ kflow --help
 kflow ui
 ```
 
-服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。界面提供搜索、状态筛选、待检查范围、直接邻接高亮、来自 Core 的 Review Order，以及当前工作区相对 Git `HEAD` 的结构化 Graph Diff；它不修改 Git、KFlow 元数据或项目文件，只允许打开已经登记且仍位于项目内的普通文件。Git 不可用、项目不在 Git 仓库中或没有 `HEAD` commit 时，只会降级 Graph Diff 面板，当前项目图仍正常工作。
+服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。界面提供搜索、状态筛选、待检查范围、直接邻接高亮、来自 Core 的 Review Order，以及当前工作区相对 Git `HEAD` 或近期历史结构提交的 Graph Diff。历史选择器只列当前 `HEAD` 可达且修改过当前项目 `.kflow/` 规范元数据的提交，默认最多 30 条；它不是通用 Git 日志。界面不修改 Git、KFlow 元数据或项目文件，只允许打开已经登记且仍位于项目内的普通文件。Git 不可用、项目不在 Git 仓库中、没有 `HEAD` commit 或单个历史快照无效时，只会降级历史选择器或对应 Graph Diff，当前项目图仍正常工作。
 
 ## 五分钟快速开始
 
@@ -202,7 +202,8 @@ Node、Derivation 和 Confirmation 是 Git 跟踪的共享事实；cache、runti
 - KFlow 只提示可能受影响的位置，不判断正文真伪，不自动修改下游。
 - Git 管理正文和历史；编辑器、Agent 或人类负责阅读与修改；KFlow 管理知识拓扑和影响范围。
 - Human Interface 与 Agent Interface 消费同一个完整项目图公共查询；历史与差异视图从 Git 获取，不建立第二套历史引擎。
-- 当前 Graph Diff MVP 固定比较工作区与 `HEAD`：通过 `git archive HEAD` 构造临时只读项目，并对临时项目再次调用 `query_project_graph()`。它比较 Node 与 Derivation 的公开结构字段及拓扑顺序，不是文件正文或 Git patch diff。
+- Graph Diff 默认比较工作区与 `HEAD`，也可比较工作区与历史 API 返回的完整 commit SHA。适配器通过 `git archive <commit>` 构造自动清理的临时只读项目，并对临时项目再次调用 `query_project_graph()`；它不 checkout。Graph Diff v2 比较 Node 与 Derivation 的公开结构字段及拓扑顺序，不是文件正文或 Git patch diff。
+- 当前不支持 commit A vs commit B、branch/tag 选择、历史图替换主画布或 viewport persistence。Reload 会在历史提交仍可用时保留选择，否则回退 `HEAD`；现有搜索、选择和清除选择触发的画布定位与 viewport 重置行为保持不变。
 
 ## 文档
 

@@ -1,8 +1,8 @@
 """Create the external Human Interface Graph Diff demonstration project.
 
 This one-time helper uses KFlow's domain models and storage API so that the
-fixture is validated by the same invariants as a normal project. It creates a
-committed HEAD baseline, then deliberately leaves structural changes
+fixture is validated by the same invariants as a normal project. It creates two
+committed structural baselines, then deliberately leaves structural changes
 uncommitted for comparison by Graph Diff vs HEAD.
 """
 
@@ -20,9 +20,14 @@ from kflow.core.models import (
     DerivationOutput,
     KnowledgeNode,
 )
+from kflow.core.query import query_project_graph
 from kflow.core.scan import confirm, validate
 from kflow.core.storage import initialize_project, save_graph
-from kflow.human.git_snapshot import graph_diff_against_head
+from kflow.human.git_snapshot import (
+    graph_diff_against_head,
+    graph_diff_against_revision,
+    query_git_history,
+)
 
 
 BASELINE_FILES = {
@@ -166,6 +171,48 @@ def baseline_graph() -> KnowledgeGraph:
     return KnowledgeGraph.build(nodes, derivations)
 
 
+def initial_graph() -> KnowledgeGraph:
+    """Return an earlier valid structural graph distinct from the HEAD baseline."""
+    nodes = tuple(
+        item
+        for item in baseline_graph().nodes.values()
+        if item.id not in {"nd_api_legacy_notes", "nd_legacy_reference"}
+    )
+    derivations = (
+        Derivation(
+            "dv_architecture",
+            "Requirements and constraints shape architecture",
+            "Product goals and operating limits jointly determine the structure.",
+            (
+                input_role("nd_requirements", "Provides product goals"),
+                input_role("nd_constraints", "Provides operating limits"),
+            ),
+            (output_role("nd_architecture", "Defines the system structure"),),
+        ),
+        Derivation(
+            "dv_api_design",
+            "Architecture defines API design",
+            "System boundaries determine the local interface.",
+            (
+                input_role("nd_architecture", "Provides component boundaries"),
+                input_role("nd_requirements", "Provides endpoint goals"),
+            ),
+            (output_role("nd_api_design", "Defines the local API"),),
+        ),
+        Derivation(
+            "dv_delivery",
+            "Architecture drives delivery plans",
+            "The same architecture informs deployment and testing.",
+            (input_role("nd_architecture", "Provides runtime boundaries"),),
+            (
+                output_role("nd_deployment_plan", "Defines packaging and launch"),
+                output_role("nd_testing_plan", "Defines verification coverage"),
+            ),
+        ),
+    )
+    return KnowledgeGraph.build(nodes, derivations)
+
+
 def current_graph() -> KnowledgeGraph:
     nodes = (
         node("nd_requirements", "requirements", "docs/requirements.md"),
@@ -283,15 +330,15 @@ def create_demo(root: Path) -> dict:
     root.mkdir(parents=True)
     write_files(root, BASELINE_FILES)
     initialize_project(root)
-    save_graph(root, baseline_graph())
+    save_graph(root, initial_graph())
 
     run_git(root, "init", "-b", "main")
     run_git(root, "config", "user.name", "KFlow Demo")
     run_git(root, "config", "user.email", "kflow-demo@example.local")
-    for node_id in baseline_graph().topological_order():
+    for node_id in initial_graph().topological_order():
         confirm(root, node_id)
     if issues := validate(root):
-        raise RuntimeError(f"Baseline validation failed: {issues}")
+        raise RuntimeError(f"Initial history validation failed: {issues}")
 
     run_git(
         root,
@@ -306,6 +353,14 @@ def create_demo(root: Path) -> dict:
     )
     run_git(root, "commit", "-m", "chore: create graph diff demo baseline")
 
+    save_graph(root, baseline_graph())
+    for node_id in baseline_graph().topological_order():
+        confirm(root, node_id)
+    if issues := validate(root):
+        raise RuntimeError(f"HEAD baseline validation failed: {issues}")
+    run_git(root, "add", ".kflow")
+    run_git(root, "commit", "-m", "chore: establish graph diff HEAD baseline")
+
     write_files(root, CURRENT_FILES)
     save_graph(root, current_graph())
     remove_fact(root, "nodes", "nd_api_legacy_notes")
@@ -316,10 +371,76 @@ def create_demo(root: Path) -> dict:
     if issues := validate(root):
         raise RuntimeError(f"Current graph validation failed: {issues}")
 
-    result = graph_diff_against_head(root)
-    if not result["available"]:
-        raise RuntimeError(f"Graph Diff is unavailable: {result['issues']}")
-    return result
+    head_diff = graph_diff_against_head(root)
+    if not head_diff["available"]:
+        raise RuntimeError(f"Graph Diff is unavailable: {head_diff['issues']}")
+    _assert_head_diff(root, head_diff)
+
+    history = query_git_history(root)
+    if not history["available"] or not history["commits"]:
+        raise RuntimeError(f"Structural history is unavailable: {history['issues']}")
+    earlier_diff = graph_diff_against_revision(root, history["commits"][0]["commit"])
+    if not earlier_diff["available"]:
+        raise RuntimeError(
+            f"Earlier Graph Diff is unavailable: {earlier_diff['issues']}"
+        )
+    if earlier_diff["summary"] == head_diff["summary"]:
+        raise RuntimeError("Earlier commit must produce a distinct Graph Diff summary.")
+
+    status = run_git(root, "status", "--short")
+    if not status:
+        raise RuntimeError("Demo working tree must retain uncommitted changes.")
+    return {
+        "head": run_git(root, "rev-parse", "HEAD"),
+        "history": history,
+        "head_diff": head_diff,
+        "earlier_diff": earlier_diff,
+        "git_status": status,
+    }
+
+
+def _assert_head_diff(root: Path, result: dict) -> None:
+    expected_summary = {
+        "added_nodes": 2,
+        "removed_nodes": 2,
+        "changed_nodes": 1,
+        "added_derivations": 1,
+        "removed_derivations": 1,
+        "changed_derivations": 3,
+        "topology_changed": True,
+    }
+    if result["summary"] != expected_summary:
+        raise RuntimeError(f"Unexpected HEAD Graph Diff summary: {result['summary']}")
+    expected_ids = {
+        "nodes.added": {"nd_api_release_notes", "nd_operations_guide"},
+        "nodes.removed": {"nd_api_legacy_notes", "nd_legacy_reference"},
+        "nodes.changed": {"nd_architecture"},
+        "derivations.added": {"dv_operations"},
+        "derivations.removed": {"dv_legacy_reference"},
+        "derivations.changed": {
+            "dv_api_design",
+            "dv_architecture",
+            "dv_delivery",
+        },
+    }
+    actual_ids = {
+        "nodes.added": {item["id"] for item in result["nodes"]["added"]},
+        "nodes.removed": {item["id"] for item in result["nodes"]["removed"]},
+        "nodes.changed": {item["id"] for item in result["nodes"]["changed"]},
+        "derivations.added": {item["id"] for item in result["derivations"]["added"]},
+        "derivations.removed": {
+            item["id"] for item in result["derivations"]["removed"]
+        },
+        "derivations.changed": {
+            item["id"] for item in result["derivations"]["changed"]
+        },
+    }
+    if actual_ids != expected_ids:
+        raise RuntimeError(f"Unexpected HEAD Graph Diff IDs: {actual_ids}")
+    graph = query_project_graph(root)
+    registered = {path for node in graph["nodes"] for path in node["files"]}
+    if "notes/personal-note.md" in registered:
+        raise RuntimeError("Unregistered personal note entered the project graph.")
 
 
 def main() -> None:

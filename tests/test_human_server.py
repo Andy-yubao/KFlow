@@ -127,7 +127,7 @@ def test_graph_diff_endpoint_returns_adapter_json_without_affecting_project(
     expected = {
         "ok": True,
         "available": False,
-        "schema_version": 1,
+        "schema_version": 2,
         "base": None,
         "summary": None,
         "nodes": {"added": [], "removed": [], "changed": []},
@@ -144,19 +144,103 @@ def test_graph_diff_endpoint_returns_adapter_json_without_affecting_project(
     }
     called = []
 
-    def graph_diff(root):
-        called.append(root)
+    def graph_diff(root, base=None):
+        called.append((root, base))
         return expected
 
-    monkeypatch.setattr(human_server, "graph_diff_against_head", graph_diff)
+    monkeypatch.setattr(human_server, "graph_diff_against_revision", graph_diff)
 
     with running_ui(tmp_path) as (_server, base_url):
         result = get_json(f"{base_url}/api/graph-diff")
         project = get_json(f"{base_url}/api/project")
 
     assert result == expected
-    assert called == [tmp_path.resolve()]
+    assert called == [(tmp_path.resolve(), None)]
     assert project == query_project_graph(tmp_path)
+
+
+def test_git_history_and_selected_graph_diff_endpoints_are_no_store(
+    tmp_path, monkeypatch
+) -> None:
+    initialize_project(tmp_path)
+    full_sha = "a" * 40
+    history = {
+        "ok": True,
+        "available": True,
+        "schema_version": 1,
+        "head": {
+            "commit": "b" * 40,
+            "short_commit": "bbbbbbb",
+            "subject": "HEAD subject",
+            "committed_at": "2026-08-29T10:00:00+08:00",
+        },
+        "commits": [
+            {
+                "commit": full_sha,
+                "short_commit": "aaaaaaa",
+                "subject": "structure subject",
+                "committed_at": "2026-08-28T10:00:00+08:00",
+            }
+        ],
+        "issues": [],
+    }
+    diff = {
+        "ok": True,
+        "available": False,
+        "schema_version": 2,
+        "base": None,
+        "summary": None,
+        "nodes": {"added": [], "removed": [], "changed": []},
+        "derivations": {"added": [], "removed": [], "changed": []},
+        "before_topological_order": [],
+        "after_topological_order": [],
+        "issues": [],
+    }
+    history_calls = []
+    diff_calls = []
+
+    def get_history(root, limit=30):
+        history_calls.append((root, limit))
+        return history
+
+    def get_diff(root, base=None):
+        diff_calls.append((root, base))
+        return diff
+
+    monkeypatch.setattr(human_server, "query_git_history", get_history)
+    monkeypatch.setattr(human_server, "graph_diff_against_revision", get_diff)
+
+    with running_ui(tmp_path) as (_server, base_url):
+        assert get_json(f"{base_url}/api/git-history?limit=12") == history
+        assert get_json(f"{base_url}/api/graph-diff?base={full_sha}") == diff
+
+    assert history_calls == [(tmp_path.resolve(), 12)]
+    assert diff_calls == [(tmp_path.resolve(), full_sha)]
+
+
+def test_history_queries_reject_invalid_limit_and_base_without_hiding_project(
+    tmp_path,
+) -> None:
+    initialize_project(tmp_path)
+    with running_ui(tmp_path) as (_server, base_url):
+        for path in (
+            "/api/git-history?limit=0",
+            "/api/git-history?limit=not-an-integer",
+            "/api/graph-diff?base=HEAD~3",
+            "/api/graph-diff?base=",
+        ):
+            try:
+                urlopen(f"{base_url}{path}", timeout=2)
+            except HTTPError as error:
+                assert error.code == 400
+                result = json.load(error)
+                assert result["ok"] is False
+                assert result["available"] is False
+                assert result["issues"][0]["code"] == "invalid_argument"
+            else:
+                raise AssertionError(f"invalid query unexpectedly succeeded: {path}")
+
+        assert get_json(f"{base_url}/api/project") == query_project_graph(tmp_path)
 
 
 def test_open_file_opens_registered_regular_file(tmp_path, monkeypatch) -> None:
@@ -303,6 +387,10 @@ def test_unknown_post_and_other_unsupported_methods_return_405(tmp_path) -> None
             (Request(f"{base_url}/api/project", data=b"{}", method="POST"), "GET"),
             (
                 Request(f"{base_url}/api/graph-diff", data=b"{}", method="POST"),
+                "GET",
+            ),
+            (
+                Request(f"{base_url}/api/git-history", data=b"{}", method="POST"),
                 "GET",
             ),
             (Request(f"{base_url}/api/open-file", data=b"{}", method="PUT"), "POST"),

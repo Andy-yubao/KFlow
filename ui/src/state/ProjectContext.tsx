@@ -4,16 +4,22 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useRef,
   type ReactNode,
 } from "react";
 
 import {
   fetchGraphDiff,
+  fetchGitHistory,
   fetchProjectGraph,
   fetchReviewOrder,
 } from "../api/project";
 import type { StatusFilter } from "../graph/graphView";
-import type { GraphDiffResult, ProjectGraphResult } from "../types/projectGraph";
+import type {
+  GitHistoryResult,
+  GraphDiffResult,
+  ProjectGraphResult,
+} from "../types/projectGraph";
 
 export type SelectedElement =
   | { kind: "knowledge"; id: string }
@@ -24,8 +30,13 @@ export interface ProjectState {
   projectGraph: ProjectGraphResult | null;
   reviewOrder: string[];
   graphDiff: GraphDiffResult | null;
+  gitHistory: GitHistoryResult | null;
+  gitHistoryLoading: boolean;
+  gitHistoryError: string | null;
+  selectedGraphDiffBase: string;
   graphDiffLoading: boolean;
   graphDiffError: string | null;
+  graphDiffRequestId: number;
   loading: boolean;
   error: string | null;
   selectedElement: SelectedElement;
@@ -39,8 +50,15 @@ export interface ProjectState {
 export type ProjectAction =
   | { type: "loading" }
   | { type: "loaded"; graph: ProjectGraphResult; reviewOrder: string[] }
-  | { type: "graphDiffLoaded"; result: GraphDiffResult }
-  | { type: "graphDiffFailed"; message: string }
+  | {
+      type: "gitHistoryLoaded";
+      result: GitHistoryResult;
+      selectedBase: string;
+    }
+  | { type: "gitHistoryFailed"; message: string }
+  | { type: "graphDiffLoading"; base: string; requestId: number }
+  | { type: "graphDiffLoaded"; result: GraphDiffResult; requestId: number }
+  | { type: "graphDiffFailed"; message: string; requestId: number }
   | { type: "failed"; message: string }
   | { type: "selected"; element: SelectedElement }
   | { type: "reviewSelected"; nodeId: string }
@@ -55,8 +73,13 @@ export const initialProjectState: ProjectState = {
   projectGraph: null,
   reviewOrder: [],
   graphDiff: null,
+  gitHistory: null,
+  gitHistoryLoading: true,
+  gitHistoryError: null,
+  selectedGraphDiffBase: "HEAD",
   graphDiffLoading: true,
   graphDiffError: null,
+  graphDiffRequestId: 0,
   loading: true,
   error: null,
   selectedElement: null,
@@ -77,7 +100,8 @@ export function projectReducer(
         ...state,
         loading: true,
         error: null,
-        graphDiffLoading: true,
+        gitHistoryLoading: true,
+        gitHistoryError: null,
         graphDiffError: null,
       };
     case "loaded":
@@ -89,7 +113,33 @@ export function projectReducer(
         error: null,
         selectedElement: null,
       };
+    case "gitHistoryLoaded":
+      return {
+        ...state,
+        gitHistory: action.result,
+        gitHistoryLoading: false,
+        gitHistoryError: null,
+        selectedGraphDiffBase: action.selectedBase,
+      };
+    case "gitHistoryFailed":
+      return {
+        ...state,
+        gitHistory: null,
+        gitHistoryLoading: false,
+        gitHistoryError: action.message,
+        selectedGraphDiffBase: "HEAD",
+      };
+    case "graphDiffLoading":
+      return {
+        ...state,
+        selectedGraphDiffBase: action.base,
+        graphDiff: null,
+        graphDiffLoading: true,
+        graphDiffError: null,
+        graphDiffRequestId: action.requestId,
+      };
     case "graphDiffLoaded":
+      if (action.requestId !== state.graphDiffRequestId) return state;
       return {
         ...state,
         graphDiff: action.result,
@@ -97,6 +147,7 @@ export function projectReducer(
         graphDiffError: null,
       };
     case "graphDiffFailed":
+      if (action.requestId !== state.graphDiffRequestId) return state;
       return {
         ...state,
         graphDiffLoading: false,
@@ -141,6 +192,7 @@ interface ProjectContextValue {
   select: (element: SelectedElement) => void;
   selectReviewNode: (nodeId: string) => void;
   selectGraphDiffElement: (element: Exclude<SelectedElement, null>) => void;
+  selectGraphDiffBase: (base: string) => void;
   setSearchText: (value: string) => void;
   setStatusFilter: (value: StatusFilter) => void;
   setOnlyNeedsReview: (value: boolean) => void;
@@ -152,31 +204,64 @@ const ProjectContext = createContext<ProjectContextValue | null>(null);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(projectReducer, initialProjectState);
+  const selectedBase = useRef("HEAD");
+  const graphDiffRequestId = useRef(0);
+  const graphDiffController = useRef<AbortController | null>(null);
+
+  const loadGraphDiff = useCallback(async (base: string) => {
+    selectedBase.current = base;
+    graphDiffController.current?.abort();
+    const controller = new AbortController();
+    graphDiffController.current = controller;
+    const requestId = ++graphDiffRequestId.current;
+    dispatch({ type: "graphDiffLoading", base, requestId });
+    try {
+      const result = await fetchGraphDiff(base, controller.signal);
+      dispatch({ type: "graphDiffLoaded", result, requestId });
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return;
+      const message =
+        error instanceof Error ? error.message : "Unknown Graph Diff error.";
+      dispatch({ type: "graphDiffFailed", message, requestId });
+    }
+  }, []);
 
   const reload = useCallback(async () => {
     dispatch({ type: "loading" });
-    const diffRequest = fetchGraphDiff()
-      .then((result) => dispatch({ type: "graphDiffLoaded", result }))
-      .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Unknown Graph Diff error.";
-        dispatch({ type: "graphDiffFailed", message });
-      });
+    const projectRequest = Promise.all([fetchProjectGraph(), fetchReviewOrder()]);
+    let base = "HEAD";
     try {
-      const [graph, review] = await Promise.all([
-        fetchProjectGraph(),
-        fetchReviewOrder(),
-      ]);
+      const history = await fetchGitHistory();
+      const availableCommits = new Set(
+        history.available ? history.commits.map((commit) => commit.commit) : [],
+      );
+      if (
+        selectedBase.current !== "HEAD" &&
+        availableCommits.has(selectedBase.current)
+      ) {
+        base = selectedBase.current;
+      }
+      dispatch({ type: "gitHistoryLoaded", result: history, selectedBase: base });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Unknown Git history error.";
+      selectedBase.current = "HEAD";
+      dispatch({ type: "gitHistoryFailed", message });
+    }
+    const diffRequest = loadGraphDiff(base);
+    try {
+      const [graph, review] = await projectRequest;
       dispatch({ type: "loaded", graph, reviewOrder: review.review_order });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown network error.";
       dispatch({ type: "failed", message });
     }
     await diffRequest;
-  }, []);
+  }, [loadGraphDiff]);
 
   useEffect(() => {
     void reload();
+    return () => graphDiffController.current?.abort();
   }, [reload]);
 
   const select = useCallback((element: SelectedElement) => {
@@ -191,6 +276,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "graphDiffSelected", element });
     },
     [],
+  );
+  const selectGraphDiffBase = useCallback(
+    (base: string) => {
+      void loadGraphDiff(base);
+    },
+    [loadGraphDiff],
   );
   const setSearchText = useCallback((value: string) => {
     dispatch({ type: "searchChanged", value });
@@ -216,6 +307,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         select,
         selectReviewNode,
         selectGraphDiffElement,
+        selectGraphDiffBase,
         setSearchText,
         setStatusFilter,
         setOnlyNeedsReview,

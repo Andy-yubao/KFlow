@@ -11,9 +11,33 @@ const context = vi.hoisted(() => ({
     graphDiffLoading: false,
     graphDiffError: null as string | null,
     graphDiffCollapsed: false,
+    selectedGraphDiffBase: "HEAD",
+    gitHistoryLoading: false,
+    gitHistoryError: null as string | null,
+    gitHistory: {
+      ok: true,
+      available: true,
+      schema_version: 1 as const,
+      head: {
+        commit: "b".repeat(40),
+        short_commit: "bbbbbbb",
+        subject: "Current tip",
+        committed_at: "2026-08-29T10:00:00+08:00",
+      },
+      commits: [
+        {
+          commit: "a".repeat(40),
+          short_commit: "aaaaaaa",
+          subject: "Earlier structure",
+          committed_at: "2026-08-28T10:00:00+08:00",
+        },
+      ],
+      issues: [],
+    },
   },
   toggleGraphDiff: vi.fn(),
   selectGraphDiffElement: vi.fn(),
+  selectGraphDiffBase: vi.fn(),
 }));
 
 vi.mock("../state/ProjectContext", () => ({ useProject: () => context }));
@@ -35,12 +59,13 @@ function result(): GraphDiffResult {
   return {
     ok: true,
     available: true,
-    schema_version: 1,
+    schema_version: 2,
     base: {
-      revision: "HEAD",
+      reference: "HEAD",
       commit: "a".repeat(40),
       short_commit: "aaaaaaa",
       subject: "baseline graph",
+      committed_at: "2026-08-28T10:00:00+08:00",
     },
     summary: {
       added_nodes: 1,
@@ -185,6 +210,7 @@ describe("GraphDiffPanel", () => {
     render(<GraphDiffPanel />);
 
     expect(screen.getByText("baseline graph")).toBeTruthy();
+    expect(screen.getAllByText(/2026/).length).toBeGreaterThan(0);
     expect(screen.getByText("Topological order changed.")).toBeTruthy();
     for (const label of [
       "Added Nodes",
@@ -269,8 +295,30 @@ describe("GraphDiffPanel", () => {
     expect(screen.getByText("Removed Derivation")).toBeTruthy();
   });
 
+  it("selects an earlier structural commit and updates the title", async () => {
+    context.state.graphDiff = result();
+    context.state.selectedGraphDiffBase = "a".repeat(40);
+    context.selectGraphDiffBase.mockReset();
+    const user = userEvent.setup();
+    render(<GraphDiffPanel />);
+
+    expect(
+      screen.getByRole("button", { name: /Graph Diff vs aaaaaaa/ }),
+    ).toBeTruthy();
+    const selector = screen.getByRole("combobox", {
+      name: /Compare current working tree against/i,
+    });
+    expect(screen.getByRole("option", { name: /HEAD.*Current tip/ })).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: /aaaaaaa.*Earlier structure.*2026/ }),
+    ).toBeTruthy();
+    await user.selectOptions(selector, "HEAD");
+    expect(context.selectGraphDiffBase).toHaveBeenCalledWith("HEAD");
+  });
+
   it("collapses and isolates unavailable or request-error states", async () => {
     context.state.graphDiff = result();
+    context.state.selectedGraphDiffBase = "HEAD";
     context.state.graphDiffCollapsed = false;
     context.state.graphDiffError = null;
     const user = userEvent.setup();
@@ -283,6 +331,12 @@ describe("GraphDiffPanel", () => {
     expect(screen.queryByText("baseline graph")).toBeNull();
 
     context.state.graphDiffCollapsed = false;
+    context.state.graphDiff = null;
+    context.state.graphDiffLoading = true;
+    rendered.rerender(<GraphDiffPanel />);
+    expect(screen.getByText("Loading HEAD graph…")).toBeTruthy();
+
+    context.state.graphDiffLoading = false;
     context.state.graphDiff = {
       ...result(),
       available: false,

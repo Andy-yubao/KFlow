@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { openRegisteredFile, parseGraphDiff } from "./project";
+import {
+  fetchGraphDiff,
+  fetchGitHistory,
+  openRegisteredFile,
+  parseGitHistory,
+  parseGraphDiff,
+} from "./project";
 
 const unavailableDiff = {
   ok: true,
   available: false,
-  schema_version: 1,
+  schema_version: 2,
   base: null,
   summary: null,
   nodes: { added: [], removed: [], changed: [] },
@@ -33,12 +39,13 @@ function availableDiff() {
   return {
     ok: true,
     available: true,
-    schema_version: 1,
+    schema_version: 2,
     base: {
-      revision: "HEAD",
-      commit: "commit-object-id",
-      short_commit: "commit",
+      reference: "HEAD",
+      commit: "a".repeat(40),
+      short_commit: "aaaaaaa",
       subject: "baseline",
+      committed_at: "2026-08-29T10:00:00+08:00",
     },
     summary: {
       added_nodes: 1,
@@ -128,7 +135,7 @@ describe("parseGraphDiff", () => {
 
   it.each([
     ["non-boolean ok", (value: any) => { value.ok = "yes"; }],
-    ["non-HEAD revision", (value: any) => { value.base.revision = "main"; }],
+    ["empty reference", (value: any) => { value.base.reference = ""; }],
     ["non-string commit", (value: any) => { value.base.commit = 42; }],
     ["non-integer summary count", (value: any) => { value.summary.added_nodes = 1.5; }],
     ["negative summary count", (value: any) => { value.summary.added_nodes = -1; }],
@@ -153,5 +160,121 @@ describe("parseGraphDiff", () => {
         base: availableDiff().base,
       }),
     ).toThrow("incompatible result");
+  });
+
+  it.each([
+    ["added Nodes", (value: any) => { value.nodes.added = [{ id: "nd_x", name: "X", files: [] }]; }],
+    ["removed Nodes", (value: any) => { value.nodes.removed = [{ id: "nd_x", name: "X", files: [] }]; }],
+    ["changed Nodes", (value: any) => { value.nodes.changed = availableDiff().nodes.changed; }],
+    ["added Derivations", (value: any) => { value.derivations.added = availableDiff().derivations.added; }],
+    ["removed Derivations", (value: any) => { value.derivations.removed = availableDiff().derivations.removed; }],
+    ["changed Derivations", (value: any) => { value.derivations.changed = availableDiff().derivations.changed; }],
+    ["before order", (value: any) => { value.before_topological_order = ["nd_x"]; }],
+    ["after order", (value: any) => { value.after_topological_order = ["nd_x"]; }],
+  ])("rejects unavailable results containing %s", (_label, mutate) => {
+    const invalid = structuredClone(unavailableDiff);
+    mutate(invalid);
+    expect(() => parseGraphDiff(invalid)).toThrow("incompatible result");
+  });
+});
+
+describe("parseGitHistory", () => {
+  function history() {
+    return {
+      ok: true,
+      available: true,
+      schema_version: 1,
+      head: {
+        commit: "b".repeat(40),
+        short_commit: "bbbbbbb",
+        subject: "Current tip",
+        committed_at: "2026-08-29T10:00:00+08:00",
+      },
+      commits: [
+        {
+          commit: "a".repeat(40),
+          short_commit: "aaaaaaa",
+          subject: "Structural change",
+          committed_at: "2026-08-28T10:00:00+08:00",
+        },
+      ],
+      issues: [],
+    };
+  }
+
+  it("accepts available and unavailable history", () => {
+    expect(parseGitHistory(history())).toEqual(history());
+    const unavailable = {
+      ok: true,
+      available: false,
+      schema_version: 1,
+      head: null,
+      commits: [],
+      issues: [
+        { code: "git_history_unavailable", message: "No Git.", references: [] },
+      ],
+    };
+    expect(parseGitHistory(unavailable)).toEqual(unavailable);
+  });
+
+  it.each([
+    ["wrong schema", (value: any) => { value.schema_version = 2; }],
+    ["invalid SHA", (value: any) => { value.commits[0].commit = "HEAD~3"; }],
+    ["missing time", (value: any) => { delete value.commits[0].committed_at; }],
+    ["duplicate commit", (value: any) => { value.commits.push(value.commits[0]); }],
+    ["HEAD duplicated", (value: any) => { value.commits[0].commit = value.head.commit; }],
+  ])("rejects %s", (_label, mutate) => {
+    const invalid = history();
+    mutate(invalid);
+    expect(() => parseGitHistory(invalid)).toThrow("incompatible result");
+  });
+});
+
+describe("fetchGraphDiff", () => {
+  it("uses the default endpoint for HEAD and URLSearchParams for a commit", async () => {
+    const fetcher = vi.fn(async (_url: string) =>
+      new Response(JSON.stringify(availableDiff()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+
+    await fetchGraphDiff();
+    await fetchGraphDiff("HEAD");
+    await fetchGraphDiff("a".repeat(40));
+
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "/api/graph-diff",
+      "/api/graph-diff",
+      `/api/graph-diff?base=${"a".repeat(40)}`,
+    ]);
+    vi.unstubAllGlobals();
+  });
+
+  it("requests Git history from its dedicated endpoint", async () => {
+    const body = {
+      ok: true,
+      available: false,
+      schema_version: 1,
+      head: null,
+      commits: [],
+      issues: [],
+    };
+    const fetcher = vi.fn(async (_url: string) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+
+    await expect(fetchGitHistory()).resolves.toEqual(body);
+    expect(fetcher).toHaveBeenCalledWith("/api/git-history", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+    vi.unstubAllGlobals();
   });
 });

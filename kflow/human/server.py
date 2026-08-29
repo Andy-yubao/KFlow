@@ -9,10 +9,18 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from kflow.core.query import query_affected_context, query_project_graph
-from kflow.human.git_snapshot import graph_diff_against_head
+from kflow.human.git_snapshot import (
+    DEFAULT_HISTORY_LIMIT,
+    MAX_HISTORY_LIMIT,
+    graph_diff_against_revision,
+    is_full_hex_commit_id,
+    query_git_history,
+    unavailable_git_history,
+)
+from kflow.human.graph_diff import unavailable_graph_diff
 
 LOOPBACK_ADDRESS = "127.0.0.1"
 SERVICE_NAME = "kflow-human-interface"
@@ -48,7 +56,8 @@ def run_ui(root: Path, port: int = 0, open_browser: bool = True) -> None:
 def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
     class HumanInterfaceHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
-            path = urlsplit(self.path).path
+            request = urlsplit(self.path)
+            path = request.path
             if path == "/api/health":
                 self._send_json({"ok": True, "service": SERVICE_NAME})
                 return
@@ -58,13 +67,57 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             if path == "/api/review-order":
                 self._send_json(query_affected_context(root))
                 return
+            if path == "/api/git-history":
+                self._git_history(request.query)
+                return
             if path == "/api/graph-diff":
-                self._send_json(graph_diff_against_head(root))
+                self._graph_diff(request.query)
                 return
             if path == "/api/open-file":
                 self._method_not_allowed("POST")
                 return
             self._serve_static(path)
+
+        def _git_history(self, query: str) -> None:
+            parameters = parse_qs(query, keep_blank_values=True)
+            if set(parameters) - {"limit"} or len(parameters.get("limit", [])) > 1:
+                self._send_json(
+                    unavailable_git_history(
+                        "Git history accepts only one integer limit parameter.",
+                        ok=False,
+                    ),
+                    status=400,
+                )
+                return
+            limit = DEFAULT_HISTORY_LIMIT
+            if "limit" in parameters:
+                try:
+                    limit = int(parameters["limit"][0])
+                except ValueError:
+                    limit = 0
+                if not 1 <= limit <= MAX_HISTORY_LIMIT:
+                    self._send_json(
+                        unavailable_git_history(
+                            f"Git history limit must be between 1 and {MAX_HISTORY_LIMIT}.",
+                            ok=False,
+                        ),
+                        status=400,
+                    )
+                    return
+            self._send_json(query_git_history(root, limit=limit))
+
+        def _graph_diff(self, query: str) -> None:
+            parameters = parse_qs(query, keep_blank_values=True)
+            if set(parameters) - {"base"} or len(parameters.get("base", [])) > 1:
+                self._send_json(_invalid_graph_diff_query(), status=400)
+                return
+            base = None
+            if "base" in parameters:
+                base = parameters["base"][0]
+                if not is_full_hex_commit_id(base):
+                    self._send_json(_invalid_graph_diff_query(), status=400)
+                    return
+            self._send_json(graph_diff_against_revision(root, base))
 
         def do_POST(self) -> None:  # noqa: N802
             path = urlsplit(self.path).path
@@ -199,7 +252,10 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", cache_control)
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
 
         def log_message(self, format: str, *args) -> None:
             return
@@ -219,6 +275,15 @@ def _open_file_error(path: str | None, code: str, message: str) -> dict:
             }
         ],
     }
+
+
+def _invalid_graph_diff_query() -> dict:
+    result = unavailable_graph_diff(
+        "invalid_argument",
+        "Graph Diff base must be one full hexadecimal commit object ID.",
+    )
+    result["ok"] = False
+    return result
 
 
 def _resolve_registered_file(

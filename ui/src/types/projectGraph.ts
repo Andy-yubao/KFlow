@@ -89,15 +89,32 @@ export interface GraphDiffSummary {
   topology_changed: boolean;
 }
 
-export interface GraphDiffResult {
+export interface GitHistoryCommit {
+  commit: string;
+  short_commit: string;
+  subject: string;
+  committed_at: string;
+}
+
+export interface GitHistoryResult {
   ok: boolean;
   available: boolean;
   schema_version: 1;
+  head: GitHistoryCommit | null;
+  commits: GitHistoryCommit[];
+  issues: QueryIssue[];
+}
+
+export interface GraphDiffResult {
+  ok: boolean;
+  available: boolean;
+  schema_version: 2;
   base: {
-    revision: "HEAD";
+    reference: string;
     commit: string;
     short_commit: string;
     subject: string;
+    committed_at: string;
   } | null;
   summary: GraphDiffSummary | null;
   nodes: {

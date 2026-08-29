@@ -8,6 +8,11 @@ import type {
   StructuralNode,
 } from "../types/projectGraph";
 
+function formatCommittedAt(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
 function displayValue(value: string) {
   return value || "None";
 }
@@ -336,9 +341,12 @@ function AvailableDiff({ result }: { result: GraphDiffResult }) {
       <div className="diff-base">
         <code>{base.short_commit}</code>
         <span>{base.subject}</span>
+        <time dateTime={base.committed_at}>{formatCommittedAt(base.committed_at)}</time>
       </div>
       {changeCount === 0 && !summary.topology_changed && (
-        <p className="muted">No structural graph changes since HEAD.</p>
+        <p className="muted">
+          No structural graph changes since {base.reference === "HEAD" ? "HEAD" : base.short_commit}.
+        </p>
       )}
       <DiffGroup title="Added Nodes" count={summary.added_nodes}>
         {result.nodes.added.map((node) => (
@@ -381,9 +389,52 @@ function AvailableDiff({ result }: { result: GraphDiffResult }) {
   );
 }
 
+function HistorySelector() {
+  const { state, selectGraphDiffBase } = useProject();
+  const history = state.gitHistory;
+  const available = history?.available === true && history.head !== null;
+  return (
+    <div className="history-selector">
+      <label htmlFor="graph-diff-base">Compare current working tree against:</label>
+      <select
+        id="graph-diff-base"
+        value={state.selectedGraphDiffBase}
+        disabled={state.gitHistoryLoading || !available}
+        onChange={(event) => selectGraphDiffBase(event.target.value)}
+      >
+        <option value="HEAD">
+          {available
+            ? `HEAD — ${history.head!.short_commit} — ${history.head!.subject} — ${formatCommittedAt(history.head!.committed_at)}`
+            : "HEAD"}
+        </option>
+        {available &&
+          history.commits.map((commit) => (
+            <option key={commit.commit} value={commit.commit}>
+              {`${commit.short_commit} — ${commit.subject} — ${formatCommittedAt(commit.committed_at)}`}
+            </option>
+          ))}
+      </select>
+      {(state.gitHistoryError || history?.issues[0]?.message) && !available && (
+        <small className="diff-error">
+          {state.gitHistoryError ?? history?.issues[0]?.message}
+        </small>
+      )}
+    </div>
+  );
+}
+
 export function GraphDiffPanel() {
   const { state, toggleGraphDiff } = useProject();
   const result = state.graphDiff;
+  const selectedCommit = state.gitHistory?.commits.find(
+    (commit) => commit.commit === state.selectedGraphDiffBase,
+  );
+  const referenceLabel =
+    state.selectedGraphDiffBase === "HEAD"
+      ? "HEAD"
+      : selectedCommit?.short_commit ??
+        result?.base?.short_commit ??
+        state.selectedGraphDiffBase.slice(0, 7);
   return (
     <aside className="graph-diff">
       <button
@@ -392,21 +443,24 @@ export function GraphDiffPanel() {
         aria-expanded={!state.graphDiffCollapsed}
         onClick={toggleGraphDiff}
       >
-        <span>Graph Diff vs HEAD</span>
+        <span>Graph Diff vs {referenceLabel}</span>
         <small>{result?.available ? result.base?.short_commit : "Git"}</small>
       </button>
       {!state.graphDiffCollapsed && (
-        state.graphDiffLoading && result === null ? (
-          <p className="muted">Loading HEAD graph…</p>
-        ) : state.graphDiffError ? (
-          <p className="diff-error" role="alert">{state.graphDiffError}</p>
-        ) : result?.available ? (
-          <AvailableDiff result={result} />
-        ) : (
-          <p className="muted">
-            {result?.issues[0]?.message ?? "Graph Diff is unavailable."}
-          </p>
-        )
+        <>
+          <HistorySelector />
+          {state.graphDiffLoading && result === null ? (
+            <p className="muted">Loading {referenceLabel} graph…</p>
+          ) : state.graphDiffError ? (
+            <p className="diff-error" role="alert">{state.graphDiffError}</p>
+          ) : result?.available ? (
+            <AvailableDiff result={result} />
+          ) : (
+            <p className="muted">
+              {result?.issues[0]?.message ?? "Graph Diff is unavailable."}
+            </p>
+          )}
+        </>
       )}
     </aside>
   );

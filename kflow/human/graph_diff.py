@@ -58,10 +58,11 @@ class GraphComparison(TypedDict):
 
 
 class GraphDiffBase(TypedDict):
-    revision: str
+    reference: str
     commit: str
     short_commit: str
     subject: str
+    committed_at: str
 
 
 class GraphDiffResult(TypedDict):
@@ -77,7 +78,7 @@ class GraphDiffResult(TypedDict):
     issues: list[QueryIssue]
 
 
-GRAPH_DIFF_SCHEMA_VERSION = 1
+GRAPH_DIFF_SCHEMA_VERSION = 2
 NODE_FIELDS = ("name", "files")
 DERIVATION_FIELDS = ("short", "detail", "inputs", "outputs")
 

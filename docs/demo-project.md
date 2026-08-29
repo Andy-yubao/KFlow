@@ -16,9 +16,10 @@ Demo 不随每次功能开发自动维护。只有项目负责人明确要求时
 
 ## Demo 的有意 Git 状态
 
-Graph Diff 比较“当前工作区”与固定的 Git `HEAD`。因此此 Demo 的正确最终状态不是干净工作区：
+Graph Diff 默认比较“当前工作区”与 Git `HEAD`，也可选择更早的结构提交。因此此 Demo 的正确最终状态不是干净工作区：
 
-- `HEAD` 是完整、有效且已提交的 KFlow 基线图；
+- Git 历史至少包含两个完整、有效的 KFlow 结构提交；
+- `HEAD` 是较新的已提交基线图；
 - 当前工作区故意保留未提交的 `.kflow` 结构变化和新增文件；
 - 启动 UI 前不要提交这些变化，否则 `Graph Diff vs HEAD` 会变为空结果；
 - `notes/personal-note.md` 已提交但未登记，因而不会进入项目图。
@@ -44,7 +45,7 @@ api-design → legacy-reference
 - 1-to-1：`deployment-plan → operations-guide`；
 - 未登记文件：`notes/personal-note.md`。
 
-当前未提交变化用于验证全部六类 Graph Diff：
+当前未提交变化相对 `HEAD` 用于验证全部六类 Graph Diff：
 
 - Added Node：`api-release-notes`、`operations-guide`；
 - Removed Node：`api-legacy-notes`、`legacy-reference`；
@@ -57,7 +58,7 @@ Node 改名还会让引用它的 Derivation role 名称随公共图结构一起�
 
 ## 一次性构造脚本
 
-仓库中的 `scripts/setup_graph_diff_demo.py` 只用于创建外部 Demo，不属于生产运行路径。它复用 `KnowledgeGraph`、storage、confirm、validate 和 Graph Diff 公共实现，不复制领域校验，也不增加编辑或删除类 CLI 命令。
+仓库中的 `scripts/setup_graph_diff_demo.py` 只用于创建外部 Demo，不属于生产运行路径。它复用 `KnowledgeGraph`、storage、confirm、validate、Git History 和 Graph Diff 公共实现，不复制领域校验，也不增加编辑或删除类 CLI 命令。
 
 从 KFlow 仓库根目录运行：
 
@@ -72,12 +73,16 @@ python scripts/setup_graph_diff_demo.py $demoRoot
 
 若 `python` 不是项目使用的 Python 3.11+ 解释器，请用实际解释器路径替换它。脚本拒绝覆盖已存在的目标目录；需要重建时，先确认它确实是 KFlow Demo，再把旧目录改名备份。脚本会：
 
-1. 创建并验证基线图；
-2. 确认全部基线 Node；
-3. 提交 `chore: create graph diff demo baseline`；
+1. 创建并验证较早的 `initial graph history` 图；
+2. 确认全部 Node 并提交第一个结构版本；
+3. 写入、确认并提交 `graph diff demo HEAD baseline`；
 4. 使用同一套领域模型写入当前合法图；
-5. 精确移除只属于历史基线的事实；
-6. 验证并输出完整 Graph Diff JSON，但不提交当前结构变化。
+5. 精确移除只属于 HEAD 基线的事实；
+6. 对 HEAD Diff summary、具体 Node / Derivation ID、未登记文件和非干净工作区做精确断言；
+7. 验证 History 至少能提供较早结构提交，且选择它会得到另一个有效、不同的 Diff；
+8. 输出 HEAD、history、HEAD diff、较早 commit diff 和 `git status --short`，但不提交当前结构变化。
+
+`tests/test_graph_diff_demo.py` 会在临时目录真实调用 `create_demo()`，验证 Git 仓库、两个结构提交、当前图校验、精确差异、history 顺序、未登记文件、非干净状态和拒绝覆盖已有目录。真实外部 Demo 仍不作为 CI fixture。
 
 ## 命令行验证
 
@@ -88,11 +93,13 @@ Set-Location $demoRoot
 kflow validate
 kflow overview
 git status --short
+git log --oneline -- .kflow
 ```
 
 验收标准：
 
 - `kflow validate` 成功；
+- `.kflow` 历史至少有两个提交，且按新到旧排列；
 - overview 中存在当前 8 个 Node 和 4 个 Derivation；
 - `git status --short` 显示与 Added / Removed / Changed 结构对应的未提交元数据及新增文件；
 - overview 的登记文件列表不包含 `notes/personal-note.md`；
@@ -117,9 +124,12 @@ if ($registeredFiles -contains "notes/personal-note.md") {
 kflow ui
 ```
 
-在 `Graph Diff vs HEAD` 中人工检查：
+在 Graph Diff 面板中人工检查：
 
+- selector 至少包含 `HEAD` 和一个更早结构提交，每项显示 short SHA、subject 与 committed time；
 - HEAD 短 SHA 和 subject 与 `git log -1` 一致；
+- 切换更早 commit 后标题和 Diff 正确变化，但主画布、Inspector、Review Order、Search 与文件 Open 不重新加载或消失；
+- 快速切换 commit 后结果保持在最后选择；切回 HEAD 正常；
 - Added、Changed Node 和 Derivation 可定位当前画布；Removed 项不可选择当前画布；
 - Changed Node 显示名称的旧值 → 新值，并用 `-` / `+` 显示文件集合差异；
 - Changed Derivation 显示 short/detail 的旧值 → 新值；
@@ -127,5 +137,7 @@ kflow ui
 - 文案为 `Topological order changed.`；
 - Search、Review Order、Inspector 和登记文件 Open 仍正常；
 - `notes/personal-note.md` 不出现在图中。
+
+在 1366 × 768 与 1920 × 1080 下确认主画布不再保留明显多余纵向空间，右侧面板可滚动且 React Flow Controls 可用。现有搜索、选择、清除选择和手动缩放引起的 fit view、缩放和平移重置行为是已接受现状；本阶段不验证 viewport persistence。
 
 结束服务使用 `Ctrl+C`。不要在验收结束后顺手提交 Demo 当前变化；未提交状态正是这个 Graph Diff Demo 的设计要求。

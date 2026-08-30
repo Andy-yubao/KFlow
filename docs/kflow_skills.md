@@ -132,6 +132,12 @@ KFlow 给出结构和影响提示，人类仍负责阅读真实文件、判断�
 - 不根据文件名、主题相似性或正文自动猜测并写入 Derivation。
 - 不要求 KFlow 提供正文上下文包，也不让它自动改写下游。
 
+### README Quickstart 的边界
+
+仓库内的 `scripts/create_readme_quickstart.py` 只为 README 首次体验创建六个普通示例文件。Agent 可以运行这个 helper，再按照 README 依次执行正式的 `init`、`add-node`、`derive` 和逐 Node `confirm`，以学习标准建图与检查闭环。
+
+这个 helper 不是 KFlow 建图能力，也不是现实项目的自动建模器：它不创建 `.kflow/`、不初始化 Git、不调用 Core 或 CLI，也不推断任何关系。真实项目中的 Node 与 Derivation 必须由用户意图或明确项目事实支持；不要因为 helper 存在就静默初始化项目、批量登记文件或猜测关系。
+
 ## 最短检查表
 
 修改前：

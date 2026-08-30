@@ -2,6 +2,12 @@
 
 本文记录 Human Interface 人工验证项目的位置、维护边界和可复制的 Graph Diff Demo 教程。后续收到“更新 Demo”任务时，应先阅读本文。
 
+## 与 README Quickstart 的分工
+
+README Quickstart 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`add-node`、`derive` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播。
+
+本文的完整 Demo 面向 Human Interface 开发和高级人工验收。它会自动构造多个 Git 结构提交、Graph Diff 基线和有意保留的未提交变化，以覆盖 Added / Removed / Changed Node 与 Derivation。它不替代基础 Quickstart，也不需要随普通 README 修改自动重构。
+
 ## 默认位置与维护边界
 
 Demo 默认位于 KFlow 仓库外：

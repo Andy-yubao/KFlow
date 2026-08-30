@@ -207,6 +207,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const selectedBase = useRef("HEAD");
   const graphDiffRequestId = useRef(0);
   const graphDiffController = useRef<AbortController | null>(null);
+  const reloadGeneration = useRef(0);
+  const reloadController = useRef<AbortController | null>(null);
 
   const loadGraphDiff = useCallback(async (base: string) => {
     selectedBase.current = base;
@@ -217,6 +219,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "graphDiffLoading", base, requestId });
     try {
       const result = await fetchGraphDiff(base, controller.signal);
+      if (controller.signal.aborted) return;
       dispatch({ type: "graphDiffLoaded", result, requestId });
     } catch (error: unknown) {
       if (controller.signal.aborted) return;
@@ -227,41 +230,70 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reload = useCallback(async () => {
+    const generation = ++reloadGeneration.current;
+    reloadController.current?.abort();
+    graphDiffController.current?.abort();
+    const controller = new AbortController();
+    reloadController.current = controller;
+    const isCurrent = () =>
+      generation === reloadGeneration.current && !controller.signal.aborted;
+
     dispatch({ type: "loading" });
-    const projectRequest = Promise.all([fetchProjectGraph(), fetchReviewOrder()]);
-    let base = "HEAD";
-    try {
-      const history = await fetchGitHistory();
-      const availableCommits = new Set(
-        history.available ? history.commits.map((commit) => commit.commit) : [],
-      );
-      if (
-        selectedBase.current !== "HEAD" &&
-        availableCommits.has(selectedBase.current)
-      ) {
-        base = selectedBase.current;
+    const coreRequest = (async () => {
+      try {
+        const [graph, review] = await Promise.all([
+          fetchProjectGraph(controller.signal),
+          fetchReviewOrder(controller.signal),
+        ]);
+        if (!isCurrent()) return;
+        dispatch({ type: "loaded", graph, reviewOrder: review.review_order });
+      } catch (error: unknown) {
+        if (!isCurrent()) return;
+        const message =
+          error instanceof Error ? error.message : "Unknown network error.";
+        dispatch({ type: "failed", message });
       }
-      dispatch({ type: "gitHistoryLoaded", result: history, selectedBase: base });
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Unknown Git history error.";
-      selectedBase.current = "HEAD";
-      dispatch({ type: "gitHistoryFailed", message });
-    }
-    const diffRequest = loadGraphDiff(base);
-    try {
-      const [graph, review] = await projectRequest;
-      dispatch({ type: "loaded", graph, reviewOrder: review.review_order });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown network error.";
-      dispatch({ type: "failed", message });
-    }
-    await diffRequest;
+    })();
+
+    const historyRequest = (async () => {
+      let base = "HEAD";
+      try {
+        const history = await fetchGitHistory(controller.signal);
+        if (!isCurrent()) return;
+        const availableCommits = new Set(
+          history.available ? history.commits.map((commit) => commit.commit) : [],
+        );
+        if (
+          selectedBase.current !== "HEAD" &&
+          availableCommits.has(selectedBase.current)
+        ) {
+          base = selectedBase.current;
+        }
+        dispatch({
+          type: "gitHistoryLoaded",
+          result: history,
+          selectedBase: base,
+        });
+      } catch (error: unknown) {
+        if (!isCurrent()) return;
+        const message =
+          error instanceof Error ? error.message : "Unknown Git history error.";
+        selectedBase.current = "HEAD";
+        dispatch({ type: "gitHistoryFailed", message });
+      }
+      if (!isCurrent()) return;
+      await loadGraphDiff(base);
+    })();
+
+    await Promise.all([coreRequest, historyRequest]);
   }, [loadGraphDiff]);
 
   useEffect(() => {
     void reload();
-    return () => graphDiffController.current?.abort();
+    return () => {
+      reloadController.current?.abort();
+      graphDiffController.current?.abort();
+    };
   }, [reload]);
 
   const select = useCallback((element: SelectedElement) => {

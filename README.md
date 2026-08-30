@@ -37,7 +37,7 @@ kflow --help
 kflow ui
 ```
 
-服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。界面提供搜索、状态筛选、待检查范围、直接邻接高亮、来自 Core 的 Review Order，以及当前工作区相对 Git `HEAD` 或近期历史结构提交的 Graph Diff。历史选择器只列当前 `HEAD` 可达且修改过当前项目 `.kflow/project.json`、`.kflow/nodes/` 或 `.kflow/derivations/` 的结构提交，默认最多 30 条；confirmation-only commit 和普通正文提交不进入列表，它不是通用 Git 日志。界面不修改 Git、KFlow 元数据或项目文件，只允许打开已经登记且仍位于项目内的普通文件。Git 不可用、项目不在 Git 仓库中、没有 `HEAD` commit 或单个历史快照无效时，只会降级历史选择器或对应 Graph Diff，当前项目图仍正常工作。
+服务只监听 `127.0.0.1`，默认选择随机空闲端口并自动打开浏览器。无图形环境或调试时可使用 `kflow ui --no-open`，也可用 `--port 8765` 固定本地端口。界面提供搜索、状态筛选、待检查范围、直接邻接高亮、来自 Core 的 Review Order，以及当前工作区相对 Git `HEAD` 或近期历史结构提交的 Graph Diff。Project Graph 与 Review Order 独立于 Git History 和 Graph Diff 加载；历史能力缓慢或失败不会阻止核心项目图显示，连续 Reload 的旧结果会被忽略。历史选择器使用 literal Git pathspec，只列当前 `HEAD` 可达且修改过当前项目 `.kflow/project.json`、`.kflow/nodes/` 或 `.kflow/derivations/` 的结构提交，默认最多 30 条；confirmation-only commit 和普通正文提交不进入列表，它不是通用 Git 日志。界面不修改 Git、KFlow 元数据或项目文件，只允许打开已经登记且仍位于项目内的普通文件。Git 不可用、项目不在 Git 仓库中、没有 `HEAD` commit 或单个历史快照无效时，只会降级历史选择器或对应 Graph Diff，当前项目图仍正常工作。
 
 ## 五分钟快速开始
 

@@ -70,10 +70,12 @@ function diff(reference: string): GraphDiffResult {
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function Probe() {
@@ -82,6 +84,17 @@ function Probe() {
     <div>
       <output aria-label="selected base">{state.selectedGraphDiffBase}</output>
       <output aria-label="loaded diff">{state.graphDiff?.base?.reference ?? "none"}</output>
+      <output aria-label="project marker">
+        {(state.projectGraph as { marker?: string } | null)?.marker ?? "none"}
+      </output>
+      <output aria-label="review order">{state.reviewOrder.join(",")}</output>
+      <output aria-label="history head">
+        {state.gitHistory?.head?.commit ?? "none"}
+      </output>
+      <output aria-label="history loading">{String(state.gitHistoryLoading)}</output>
+      <output aria-label="history error">{state.gitHistoryError ?? "none"}</output>
+      <output aria-label="core loading">{String(state.loading)}</output>
+      <output aria-label="core error">{state.error ?? "none"}</output>
       <button type="button" onClick={() => selectGraphDiffBase(firstCommit)}>
         Select first
       </button>
@@ -105,6 +118,57 @@ beforeEach(() => {
 });
 
 describe("ProjectProvider Graph Diff history requests", () => {
+  it("loads core project data without waiting for pending Git history", async () => {
+    const historyRequest = deferred<GitHistoryResult>();
+    api.fetchProjectGraph.mockResolvedValue({ schema_version: 2, marker: "core" });
+    api.fetchReviewOrder.mockResolvedValue({ review_order: ["nd_core"] });
+    api.fetchGitHistory.mockReturnValue(historyRequest.promise);
+
+    render(
+      <ProjectProvider>
+        <Probe />
+      </ProjectProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("project marker").textContent).toBe("core"),
+    );
+    expect(screen.getByLabelText("review order").textContent).toBe("nd_core");
+    expect(screen.getByLabelText("core loading").textContent).toBe("false");
+    expect(screen.getByLabelText("history loading").textContent).toBe("true");
+    expect(api.fetchGraphDiff).not.toHaveBeenCalled();
+
+    historyRequest.resolve(history());
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
+    expect(screen.getByLabelText("history loading").textContent).toBe("false");
+  });
+
+  it("keeps loaded core data when Git history fails", async () => {
+    api.fetchProjectGraph.mockResolvedValue({ schema_version: 2, marker: "core" });
+    api.fetchReviewOrder.mockResolvedValue({ review_order: ["nd_core"] });
+    api.fetchGitHistory.mockRejectedValue(new Error("History unavailable"));
+
+    render(
+      <ProjectProvider>
+        <Probe />
+      </ProjectProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
+    expect(screen.getByLabelText("project marker").textContent).toBe("core");
+    expect(screen.getByLabelText("review order").textContent).toBe("nd_core");
+    expect(screen.getByLabelText("core error").textContent).toBe("none");
+    expect(screen.getByLabelText("history error").textContent).toBe(
+      "History unavailable",
+    );
+    expect(screen.getByLabelText("selected base").textContent).toBe("HEAD");
+    expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1);
+  });
+
   it("defaults to HEAD and selecting a commit refreshes only Graph Diff", async () => {
     const user = userEvent.setup();
     render(
@@ -213,5 +277,86 @@ describe("ProjectProvider Graph Diff history requests", () => {
       expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
     );
     expect(screen.getByLabelText("selected base").textContent).toBe("HEAD");
+  });
+
+  it("ignores every stale result from an older overlapping reload", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectProvider>
+        <Probe />
+      </ProjectProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
+    await user.click(screen.getByRole("button", { name: "Select second" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit),
+    );
+
+    const firstProject = deferred<{ schema_version: number; marker: string }>();
+    const secondProject = deferred<{ schema_version: number; marker: string }>();
+    const firstReview = deferred<{ review_order: string[] }>();
+    const secondReview = deferred<{ review_order: string[] }>();
+    const firstHistory = deferred<GitHistoryResult>();
+    const secondHistory = deferred<GitHistoryResult>();
+    const secondDiff = deferred<GraphDiffResult>();
+    let firstProjectSignal: AbortSignal | undefined;
+    let firstHistorySignal: AbortSignal | undefined;
+
+    api.fetchProjectGraph.mockReset()
+      .mockImplementationOnce((signal?: AbortSignal) => {
+        firstProjectSignal = signal;
+        return firstProject.promise;
+      })
+      .mockImplementationOnce(() => secondProject.promise);
+    api.fetchReviewOrder.mockReset()
+      .mockImplementationOnce(() => firstReview.promise)
+      .mockImplementationOnce(() => secondReview.promise);
+    api.fetchGitHistory.mockReset()
+      .mockImplementationOnce((signal?: AbortSignal) => {
+        firstHistorySignal = signal;
+        return firstHistory.promise;
+      })
+      .mockImplementationOnce(() => secondHistory.promise);
+    api.fetchGraphDiff.mockReset().mockReturnValue(secondDiff.promise);
+
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(api.fetchProjectGraph).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(api.fetchProjectGraph).toHaveBeenCalledTimes(2));
+    expect(firstProjectSignal?.aborted).toBe(true);
+    expect(firstHistorySignal?.aborted).toBe(true);
+
+    await act(async () => {
+      secondProject.resolve({ schema_version: 2, marker: "reload-2" });
+      secondReview.resolve({ review_order: ["nd_reload_2"] });
+      secondHistory.resolve(history([secondCommit]));
+    });
+    await waitFor(() => expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1));
+    secondDiff.resolve(diff(secondCommit));
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit),
+    );
+
+    await act(async () => {
+      firstProject.reject(new Error("stale core failure"));
+      firstReview.resolve({ review_order: ["nd_reload_1"] });
+      firstHistory.resolve(history([firstCommit]));
+      await Promise.allSettled([
+        firstProject.promise,
+        firstReview.promise,
+        firstHistory.promise,
+      ]);
+    });
+
+    expect(screen.getByLabelText("project marker").textContent).toBe("reload-2");
+    expect(screen.getByLabelText("review order").textContent).toBe("nd_reload_2");
+    expect(screen.getByLabelText("history head").textContent).toBe(headCommit);
+    expect(screen.getByLabelText("selected base").textContent).toBe(secondCommit);
+    expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit);
+    expect(screen.getByLabelText("core loading").textContent).toBe("false");
+    expect(screen.getByLabelText("core error").textContent).toBe("none");
+    expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1);
   });
 });

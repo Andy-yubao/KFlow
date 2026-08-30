@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   fetchGraphDiff,
   fetchGitHistory,
+  fetchProjectGraph,
+  fetchReviewOrder,
   openRegisteredFile,
   parseGitHistory,
   parseGraphDiff,
@@ -23,6 +25,49 @@ const unavailableDiff = {
   after_topological_order: [],
   issues: [],
 };
+
+describe("read request cancellation", () => {
+  it("passes the caller AbortSignal to every read endpoint", async () => {
+    const history = {
+      ok: true,
+      available: false,
+      schema_version: 1,
+      head: null,
+      commits: [],
+      issues: [],
+    };
+    const bodies = new Map<string, object>([
+      ["/api/project", { schema_version: 2, nodes: [], derivations: [] }],
+      [
+        "/api/review-order",
+        { schema_version: 2, review_order: [], issues: [] },
+      ],
+      ["/api/git-history", history],
+      ["/api/graph-diff", unavailableDiff],
+    ]);
+    const fetcher = vi.fn(async (url: string, _options?: RequestInit) =>
+      new Response(JSON.stringify(bodies.get(url)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const controller = new AbortController();
+
+    await Promise.all([
+      fetchProjectGraph(controller.signal),
+      fetchReviewOrder(controller.signal),
+      fetchGitHistory(controller.signal),
+      fetchGraphDiff("HEAD", controller.signal),
+    ]);
+
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    for (const [, options] of fetcher.mock.calls) {
+      expect(options?.signal).toBe(controller.signal);
+    }
+    vi.unstubAllGlobals();
+  });
+});
 
 function availableDiff() {
   const node = { id: "nd_node", name: "Node", files: ["docs/node.md"] };

@@ -306,9 +306,9 @@ def _structural_pathspecs(project_relative: Path) -> tuple[str, ...]:
     prefix = "" if project_relative == Path(".") else f"{project_relative.as_posix()}/"
     metadata = f"{prefix}.kflow"
     return (
-        f"{metadata}/project.json",
-        f"{metadata}/nodes",
-        f"{metadata}/derivations",
+        f":(literal){metadata}/project.json",
+        f":(literal){metadata}/nodes",
+        f":(literal){metadata}/derivations",
     )
 
 

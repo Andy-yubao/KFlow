@@ -171,6 +171,61 @@ def test_history_deduplicates_structural_head_and_supports_subdirectory_projects
     assert result["commits"] == []
 
 
+def test_history_uses_literal_pathspecs_for_special_character_project_paths(
+    tmp_path,
+):
+    repository = tmp_path / "repo"
+    project_relative = "packages/[draft] 项目/KFlow 示例"
+    project, node_a, _node_b = _committed_project(repository, project_relative)
+    baseline = _git(repository, "rev-parse", "HEAD").stdout.strip()
+
+    node_a_file = project / "docs/a.md"
+    node_a_file.write_text("A changed for confirmation", encoding="utf-8")
+    confirm(project, node_a.id)
+    confirmation = project / ".kflow/confirmations" / f"{node_a.id}.json"
+    _git(
+        repository,
+        "add",
+        f":(literal){confirmation.relative_to(repository).as_posix()}",
+    )
+    _git(repository, "commit", "-m", "confirm target only")
+    confirmation_only = _git(repository, "rev-parse", "HEAD").stdout.strip()
+    node_a_file.write_text("A", encoding="utf-8")
+
+    (project / "docs/c.md").write_text("C", encoding="utf-8")
+    add_node(project, "C", ("docs/c.md",))
+    _git(repository, "add", f":(literal){project_relative}/.kflow/nodes")
+    _git(repository, "add", f":(literal){project_relative}/docs/c.md")
+    _git(repository, "commit", "-m", "change target structure")
+    target_structural = _git(repository, "rev-parse", "HEAD").stdout.strip()
+
+    decoy_relative = "packages/d 项目/KFlow 示例"
+    decoy = repository / Path(decoy_relative)
+    (decoy / "docs").mkdir(parents=True)
+    (decoy / "docs/decoy.md").write_text("decoy", encoding="utf-8")
+    initialize_project(decoy)
+    add_node(decoy, "Decoy", ("docs/decoy.md",))
+    _git(repository, "add", decoy_relative)
+    _git(repository, "commit", "-m", "change pattern-matching decoy structure")
+    decoy_structural = _git(repository, "rev-parse", "HEAD").stdout.strip()
+
+    node_a_file.write_text("docs only", encoding="utf-8")
+    _git(repository, "add", f":(literal){project_relative}/docs/a.md")
+    _git(repository, "commit", "-m", "target docs only")
+    docs_only = _git(repository, "rev-parse", "HEAD").stdout.strip()
+
+    result = query_git_history(project)
+
+    assert result["available"] is True
+    assert result["head"]["commit"] == docs_only
+    assert [commit["commit"] for commit in result["commits"]] == [
+        target_structural,
+        baseline,
+    ]
+    excluded = {confirmation_only, decoy_structural, docs_only}
+    assert not excluded.intersection(commit["commit"] for commit in result["commits"])
+
+
 def test_revision_snapshot_and_diff_accept_an_earlier_full_ancestor_commit(tmp_path):
     project, _node_a, _node_b = _committed_project(tmp_path / "repo")
     baseline = _git(project, "rev-parse", "HEAD").stdout.strip()

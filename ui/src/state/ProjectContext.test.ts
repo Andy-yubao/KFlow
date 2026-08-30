@@ -75,9 +75,10 @@ describe("projectReducer", () => {
   });
 
   it("tracks Graph Diff requests and ignores an older response", () => {
+    const selectedCommit = "a1b2c3d4";
     const loading = projectReducer(initialProjectState, {
       type: "graphDiffLoading",
-      base: "a".repeat(40),
+      base: selectedCommit,
       requestId: 2,
     });
     const staleResult = { schema_version: 2 } as never;
@@ -87,7 +88,7 @@ describe("projectReducer", () => {
       requestId: 1,
     });
     expect(stale.graphDiff).toBeNull();
-    expect(stale.selectedGraphDiffBase).toBe("a".repeat(40));
+    expect(stale.selectedGraphDiffBase).toBe(selectedCommit);
     expect(stale.graphDiffLoading).toBe(true);
 
     const latestResult = { schema_version: 2 } as never;

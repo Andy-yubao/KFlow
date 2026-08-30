@@ -1,5 +1,6 @@
 """Real Git integration tests for revision snapshots and structural history."""
 
+import string
 import subprocess
 from pathlib import Path
 
@@ -71,9 +72,12 @@ def test_head_snapshot_reports_commit_and_cleans_temporary_tree(tmp_path, monkey
     monkeypatch.setattr(git_snapshot, "query_project_graph", capture_query)
 
     snapshot = load_head_snapshot(project)
+    expected = _git(project, "rev-parse", "HEAD").stdout.strip()
 
     assert snapshot.base.reference == "HEAD"
-    assert len(snapshot.base.commit) == 40
+    assert snapshot.base.commit == expected
+    assert snapshot.base.commit
+    assert all(character in string.hexdigits for character in snapshot.base.commit)
     assert snapshot.base.short_commit == snapshot.base.commit[:7]
     assert snapshot.base.subject == "baseline graph"
     assert snapshot.base.committed_at
@@ -119,8 +123,16 @@ def test_diff_against_head_detects_added_node_changed_derivation_and_topology(tm
 def test_history_lists_only_kflow_structure_commits_newest_first_and_honors_limit(
     tmp_path,
 ):
-    project, _node_a, _node_b = _committed_project(tmp_path / "repo")
+    project, node_a, _node_b = _committed_project(tmp_path / "repo")
     baseline = _git(project, "rev-parse", "HEAD").stdout.strip()
+
+    node_a_file = project / "docs/a.md"
+    node_a_file.write_text("A changed for confirmation", encoding="utf-8")
+    confirm(project, node_a.id)
+    _git(project, "add", f".kflow/confirmations/{node_a.id}.json")
+    _git(project, "commit", "-m", "confirm A only")
+    confirmation_only = _git(project, "rev-parse", "HEAD").stdout.strip()
+    node_a_file.write_text("A", encoding="utf-8")
 
     (project / "docs/c.md").write_text("C", encoding="utf-8")
     add_node(project, "C", ("docs/c.md",))
@@ -142,6 +154,7 @@ def test_history_lists_only_kflow_structure_commits_newest_first_and_honors_limi
         baseline,
     ]
     assert all(commit["subject"] != "docs only change" for commit in result["commits"])
+    assert all(commit["commit"] != confirmation_only for commit in result["commits"])
     assert query_git_history(project, limit=1)["commits"] == result["commits"][:1]
 
 

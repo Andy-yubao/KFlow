@@ -8,6 +8,9 @@ import {
   parseGraphDiff,
 } from "./project";
 
+const headObjectId = "b2c3d4e5";
+const earlierObjectId = "a1b2c3d4";
+
 const unavailableDiff = {
   ok: true,
   available: false,
@@ -42,7 +45,7 @@ function availableDiff() {
     schema_version: 2,
     base: {
       reference: "HEAD",
-      commit: "a".repeat(40),
+      commit: earlierObjectId,
       short_commit: "aaaaaaa",
       subject: "baseline",
       committed_at: "2026-08-29T10:00:00+08:00",
@@ -185,14 +188,14 @@ describe("parseGitHistory", () => {
       available: true,
       schema_version: 1,
       head: {
-        commit: "b".repeat(40),
+        commit: headObjectId,
         short_commit: "bbbbbbb",
         subject: "Current tip",
         committed_at: "2026-08-29T10:00:00+08:00",
       },
       commits: [
         {
-          commit: "a".repeat(40),
+          commit: earlierObjectId,
           short_commit: "aaaaaaa",
           subject: "Structural change",
           committed_at: "2026-08-28T10:00:00+08:00",
@@ -242,12 +245,12 @@ describe("fetchGraphDiff", () => {
 
     await fetchGraphDiff();
     await fetchGraphDiff("HEAD");
-    await fetchGraphDiff("a".repeat(40));
+    await fetchGraphDiff(earlierObjectId);
 
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       "/api/graph-diff",
       "/api/graph-diff",
-      `/api/graph-diff?base=${"a".repeat(40)}`,
+      `/api/graph-diff?base=${earlierObjectId}`,
     ]);
     vi.unstubAllGlobals();
   });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,8 +14,9 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../api/project", () => api);
 
-const firstCommit = "a".repeat(40);
-const secondCommit = "c".repeat(40);
+const headCommit = "b2c3d4e5";
+const firstCommit = "a1b2c3d4";
+const secondCommit = "c3d4e5f6";
 
 function history(commits = [firstCommit, secondCommit]): GitHistoryResult {
   return {
@@ -23,7 +24,7 @@ function history(commits = [firstCommit, secondCommit]): GitHistoryResult {
     available: true,
     schema_version: 1,
     head: {
-      commit: "b".repeat(40),
+      commit: headCommit,
       short_commit: "bbbbbbb",
       subject: "HEAD",
       committed_at: "2026-08-29T10:00:00+08:00",
@@ -45,7 +46,7 @@ function diff(reference: string): GraphDiffResult {
     schema_version: 2,
     base: {
       reference,
-      commit: reference === "HEAD" ? "b".repeat(40) : reference,
+      commit: reference === "HEAD" ? headCommit : reference,
       short_commit: reference === "HEAD" ? "bbbbbbb" : reference.slice(0, 7),
       subject: reference,
       committed_at: "2026-08-29T10:00:00+08:00",
@@ -65,6 +66,14 @@ function diff(reference: string): GraphDiffResult {
     after_topological_order: [],
     issues: [],
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function Probe() {
@@ -118,6 +127,49 @@ describe("ProjectProvider Graph Diff history requests", () => {
     expect(api.fetchReviewOrder).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the latest commit when rapid selections resolve out of order", async () => {
+    const user = userEvent.setup();
+    const firstRequest = deferred<GraphDiffResult>();
+    const secondRequest = deferred<GraphDiffResult>();
+    let firstSignal: AbortSignal | undefined;
+    api.fetchGraphDiff.mockImplementation(
+      async (base = "HEAD", signal?: AbortSignal) => {
+        if (base === firstCommit) {
+          firstSignal = signal;
+          return firstRequest.promise;
+        }
+        if (base === secondCommit) return secondRequest.promise;
+        return diff(base);
+      },
+    );
+    render(
+      <ProjectProvider>
+        <Probe />
+      </ProjectProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select first" }));
+    await waitFor(() => expect(firstSignal).toBeDefined());
+    await user.click(screen.getByRole("button", { name: "Select second" }));
+    expect(firstSignal?.aborted).toBe(true);
+
+    secondRequest.resolve(diff(secondCommit));
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit),
+    );
+    await act(async () => {
+      firstRequest.resolve(diff(firstCommit));
+      await firstRequest.promise;
+    });
+    expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit);
+
+    expect(api.fetchProjectGraph).toHaveBeenCalledTimes(1);
+    expect(api.fetchReviewOrder).toHaveBeenCalledTimes(1);
+  });
+
   it("reload preserves a listed commit and falls back to HEAD after it disappears", async () => {
     const user = userEvent.setup();
     render(
@@ -133,12 +185,33 @@ describe("ProjectProvider Graph Diff history requests", () => {
 
     await user.click(screen.getByRole("button", { name: "Reload" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("loaded diff").textContent).toBe(firstCommit),
+      expect(api.fetchGitHistory).toHaveBeenCalledTimes(2),
     );
+    await waitFor(() =>
+      expect(api.fetchGraphDiff).toHaveBeenCalledTimes(3),
+    );
+    expect(api.fetchGraphDiff).toHaveBeenLastCalledWith(
+      firstCommit,
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByLabelText("selected base").textContent).toBe(firstCommit);
+    expect(screen.getByLabelText("loaded diff").textContent).toBe(firstCommit);
 
     api.fetchGitHistory.mockResolvedValue(history([secondCommit]));
     await user.click(screen.getByRole("button", { name: "Reload" }));
-    await waitFor(() => expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"));
+    await waitFor(() =>
+      expect(api.fetchGitHistory).toHaveBeenCalledTimes(3),
+    );
+    await waitFor(() =>
+      expect(api.fetchGraphDiff).toHaveBeenCalledTimes(4),
+    );
+    expect(api.fetchGraphDiff).toHaveBeenLastCalledWith(
+      "HEAD",
+      expect.any(AbortSignal),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
     expect(screen.getByLabelText("selected base").textContent).toBe("HEAD");
   });
 });

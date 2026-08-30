@@ -19,14 +19,14 @@ const context = vi.hoisted(() => ({
       available: true,
       schema_version: 1 as const,
       head: {
-        commit: "b".repeat(40),
+        commit: "b2c3d4e5",
         short_commit: "bbbbbbb",
         subject: "Current tip",
         committed_at: "2026-08-29T10:00:00+08:00",
       },
       commits: [
         {
-          commit: "a".repeat(40),
+          commit: "a1b2c3d4",
           short_commit: "aaaaaaa",
           subject: "Earlier structure",
           committed_at: "2026-08-28T10:00:00+08:00",
@@ -62,7 +62,7 @@ function result(): GraphDiffResult {
     schema_version: 2,
     base: {
       reference: "HEAD",
-      commit: "a".repeat(40),
+      commit: "a1b2c3d4",
       short_commit: "aaaaaaa",
       subject: "baseline graph",
       committed_at: "2026-08-28T10:00:00+08:00",
@@ -297,7 +297,7 @@ describe("GraphDiffPanel", () => {
 
   it("selects an earlier structural commit and updates the title", async () => {
     context.state.graphDiff = result();
-    context.state.selectedGraphDiffBase = "a".repeat(40);
+    context.state.selectedGraphDiffBase = "a1b2c3d4";
     context.selectGraphDiffBase.mockReset();
     const user = userEvent.setup();
     render(<GraphDiffPanel />);

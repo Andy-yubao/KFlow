@@ -163,20 +163,20 @@ def test_git_history_and_selected_graph_diff_endpoints_are_no_store(
     tmp_path, monkeypatch
 ) -> None:
     initialize_project(tmp_path)
-    full_sha = "a" * 40
+    commit_id = "a1b2c3d4"
     history = {
         "ok": True,
         "available": True,
         "schema_version": 1,
         "head": {
-            "commit": "b" * 40,
+            "commit": "b2c3d4e5",
             "short_commit": "bbbbbbb",
             "subject": "HEAD subject",
             "committed_at": "2026-08-29T10:00:00+08:00",
         },
         "commits": [
             {
-                "commit": full_sha,
+                "commit": commit_id,
                 "short_commit": "aaaaaaa",
                 "subject": "structure subject",
                 "committed_at": "2026-08-28T10:00:00+08:00",
@@ -212,10 +212,10 @@ def test_git_history_and_selected_graph_diff_endpoints_are_no_store(
 
     with running_ui(tmp_path) as (_server, base_url):
         assert get_json(f"{base_url}/api/git-history?limit=12") == history
-        assert get_json(f"{base_url}/api/graph-diff?base={full_sha}") == diff
+        assert get_json(f"{base_url}/api/graph-diff?base={commit_id}") == diff
 
     assert history_calls == [(tmp_path.resolve(), 12)]
-    assert diff_calls == [(tmp_path.resolve(), full_sha)]
+    assert diff_calls == [(tmp_path.resolve(), commit_id)]
 
 
 def test_history_queries_reject_invalid_limit_and_base_without_hiding_project(

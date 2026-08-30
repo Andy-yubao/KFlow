@@ -29,7 +29,7 @@ Python Core
 
 - `kflow/core/` 维护领域事实、图不变量、状态和公共查询。
 - `kflow/human/` 只负责本地 HTTP 生命周期、公共查询的 JSON 传输和包内静态资源服务。
-- `kflow/human/git_snapshot.py` 使用参数数组执行只读 Git 命令，列出当前项目 `.kflow/` 的近期结构提交，将 `HEAD` 或经校验的祖先 commit archive 解压到自动清理的临时目录，并对快照调用公共 `query_project_graph()`；`graph_diff.py` 不执行 Git，只比较两个公共项目图结果。
+- `kflow/human/git_snapshot.py` 使用参数数组执行只读 Git 命令，列出当前项目 `.kflow/project.json`、`.kflow/nodes/` 和 `.kflow/derivations/` 的近期结构提交，将 `HEAD` 或经校验的祖先 commit archive 解压到自动清理的临时目录，并对快照调用公共 `query_project_graph()`；`graph_diff.py` 不执行 Git，只比较两个公共项目图结果。
 - `ui/` 保存可维护的 React 与 TypeScript 源码、项目图到画布图的纯转换以及页面状态。
 - React Flow 负责图交互，Dagre 只计算当前会话中的从左向右坐标。
 
@@ -44,7 +44,7 @@ kflow ui
 → 前端分别请求 GET /api/project、GET /api/review-order、GET /api/git-history 与 GET /api/graph-diff
 → GET /api/project 调用 query_project_graph(root)
 → GET /api/review-order 调用 query_affected_context(root)
-→ GET /api/git-history 只列当前 HEAD 可达且修改项目 .kflow/ 的近期提交
+→ GET /api/git-history 只列当前 HEAD 可达且修改项目 .kflow/project.json、.kflow/nodes/ 或 .kflow/derivations/ 的近期结构提交
 → GET /api/graph-diff 对当前 root 调用 query_project_graph(root)，并从 HEAD 或指定 commit 临时快照再次调用 query_project_graph(snapshot_root)
 → 前端转换并布局 Knowledge Node 与 Derivation
 → 用户在单页图和 Inspector 中只读查看项目
@@ -67,13 +67,13 @@ POST /api/open-file
 
 `GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_affected_context(root)`，前端不重新计算影响范围或检查顺序。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
 
-`GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
+`GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 或 `<project-relative-path>/.kflow/derivations/` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。confirmation-only commit 和普通正文提交不进入列表。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
 
 `GET /api/graph-diff` 返回独立的 `schema_version: 2` Graph Diff 协议，不改变或冒充 `ProjectGraphResult.schema_version`。无 query 时固定比较 working tree vs `HEAD`；`?base=<full-commit-sha>` 比较 working tree vs selected commit。可用结果包含 `base.reference`、解析后的完整和短 commit SHA、subject、committed time、计数 `summary`、Node/Derivation 的 `added`、`removed`、`changed`、变化前后拓扑顺序和 `issues`。`changed` 项包含固定顺序的 `changed_fields` 以及 `before` / `after` 公开结构快照；全部数组按 ID 确定性排序。
 
 历史 base 只接受非空十六进制完整 object ID，并再次确认它解析为 commit 且可从当前 `HEAD` 到达；不接受 branch、tag、`HEAD~n`、pathspec 或其他 Git 参数。明显非法的 query 返回 HTTP 400 和稳定的 unavailable 空集合；commit 不存在、不可达、archive 失败或快照图无效则以 HTTP 200 只降级该次比较。
 
-Node 按 ID 对齐，只比较 `id`、`name` 和 `files`。Derivation 按 ID 对齐，整体比较 `id`、`short`、`detail`、`inputs`、`outputs`，每个角色保留 `node`、`name`、`short`、`detail`，多输入、多输出不会展开为笛卡尔积。`status`、`reasons`、`changed_files` 描述 review 状态，不计入结构历史 diff。`topology_changed` 表示公共查询的确定性拓扑顺序是否变化。
+Node 按 ID 对齐，只比较 `id`、`name` 和 `files`。Derivation 按 ID 对齐，整体比较 `id`、`short`、`detail`、`inputs`、`outputs`，每个角色保留 `node`、`name`、`short`、`detail`，多输入、多输出不会展开为笛卡尔积。Confirmation 属于 review 基线；它与 `status`、`reasons`、`changed_files` 一样不属于 Graph Diff 结构。`topology_changed` 表示公共查询的确定性拓扑顺序是否变化。
 
 Git 不可用、非 Git 项目、无 `HEAD`、history/archive 失败或快照不是有效 KFlow 项目时，对应端点仍返回 HTTP 200、`ok: true`、`available: false` 和结构化 issue。Graph Diff unavailable 结果还严格保持 `base`、`summary` 为 `null`，六类差异数组及 before/after topological order 全部为空。History 或 Graph Diff 请求/解析失败只影响该面板，不替换项目图错误状态。
 

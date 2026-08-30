@@ -147,7 +147,7 @@ def load_revision_snapshot(root: Path, revision: str) -> RevisionSnapshot:
 def query_git_history(
     root: Path, limit: int = DEFAULT_HISTORY_LIMIT
 ) -> GitHistoryResult:
-    """List recent HEAD-reachable commits that modified this project's .kflow path."""
+    """List HEAD-reachable commits that modified public graph structure."""
     if (
         isinstance(limit, bool)
         or not isinstance(limit, int)
@@ -160,7 +160,7 @@ def query_git_history(
         repository_root = _repository_root(project_root)
         project_relative = _project_relative_path(project_root, repository_root)
         head = _resolve_snapshot_base(repository_root, "HEAD")
-        pathspec = _metadata_pathspec(project_relative)
+        pathspecs = _structural_pathspecs(project_relative)
         result = _run_git(
             repository_root,
             "log",
@@ -168,7 +168,7 @@ def query_git_history(
             f"--max-count={limit + 1}",
             "--format=%H%x00%h%x00%s%x00%cI%x1e",
             "--",
-            pathspec,
+            *pathspecs,
         )
         output = _require_git_success(result, "read KFlow structural history")
         commits = _parse_history_commits(output)
@@ -302,10 +302,14 @@ def _project_relative_path(project_root: Path, repository_root: Path) -> Path:
         ) from error
 
 
-def _metadata_pathspec(project_relative: Path) -> str:
-    if project_relative == Path("."):
-        return ".kflow"
-    return f"{project_relative.as_posix()}/.kflow"
+def _structural_pathspecs(project_relative: Path) -> tuple[str, ...]:
+    prefix = "" if project_relative == Path(".") else f"{project_relative.as_posix()}/"
+    metadata = f"{prefix}.kflow"
+    return (
+        f"{metadata}/project.json",
+        f"{metadata}/nodes",
+        f"{metadata}/derivations",
+    )
 
 
 def _run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:

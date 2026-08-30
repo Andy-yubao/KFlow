@@ -235,7 +235,7 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 
 历史与图差异以 Git commit 为数据源，不新增 KFlow event sourcing 或快照数据库。Git adapter 默认通过 `git archive HEAD` 重建基线，也允许使用 Git History 公共结果返回的完整 commit SHA。历史 SHA 必须是非空十六进制 object ID、解析为完整 commit，且可从当前 `HEAD` 到达；branch、tag、`HEAD~n` 和其他 revision 表达式不进入该接口。archive 解压到自动清理的临时目录，适配器定位 Git 仓库内可能位于子目录的 KFlow 项目根，再调用公共 `query_project_graph()` 重建图。整个流程不 checkout，也不修改工作区。
 
-Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow` 的 path-limited log，按提交时间顺序从新到旧最多返回 30 条（内部上限 100）。`HEAD` 是独立默认基准；若它本身是结构提交，不在 `commits` 中重复返回。列表不预先扫描每个 commit 的项目图；某个快照缺少 KFlow 项目或包含无效元数据时，只让该次 Graph Diff 降级。
+Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 和 `<project-relative-path>/.kflow/derivations/` 的 path-limited log，按提交时间顺序从新到旧最多返回 30 条（内部上限 100）。Confirmation 是 review 基线而不是 Graph Diff 结构，因此 confirmation-only commit 不进入结构历史列表；普通正文提交也不进入列表。`HEAD` 是独立默认基准；若它本身是结构提交，不在 `commits` 中重复返回。列表不预先扫描每个 commit 的项目图；某个快照缺少 KFlow 项目或包含无效元数据时，只让该次 Graph Diff 降级。
 
 结构差异按稳定 ID 对齐 Node 与 Derivation。Node 只比较 `id`、`name`、`files`；Derivation 比较 `id`、`short`、`detail`、完整 `inputs` 和 `outputs` 角色；拓扑变化比较公共查询返回的确定性 `topological_order`。`status`、`reasons` 和 `changed_files` 是当前 review 状态，不属于结构历史差异。Graph Diff 独立协议当前为 `schema_version: 2`，其 `base` 同时记录请求 reference、解析后的完整 commit、短 SHA、subject 和 committed time。当前仍不支持 commit A vs commit B、branch/tag 选择、完整时间线、历史图替换主画布、Git patch、checkout 和编辑能力。
 

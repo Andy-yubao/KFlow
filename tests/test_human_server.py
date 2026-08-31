@@ -17,8 +17,8 @@ from kflow.human.server import create_ui_server
 
 
 @contextmanager
-def running_ui(root):
-    server = create_ui_server(root)
+def running_ui(root, **options):
+    server = create_ui_server(root, **options)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     host, port = server.server_address[:2]
@@ -66,11 +66,71 @@ def test_server_binds_loopback_and_allocates_an_ephemeral_port(tmp_path) -> None
 
 
 def test_health_endpoint_returns_stable_json(tmp_path) -> None:
-    with running_ui(tmp_path) as (_server, base_url):
+    with running_ui(tmp_path, instance_id="instance-test") as (_server, base_url):
         assert get_json(f"{base_url}/api/health") == {
             "ok": True,
             "service": "kflow-human-interface",
+            "project_root": str(tmp_path.resolve()),
+            "instance_id": "instance-test",
         }
+
+
+def test_revision_endpoint_is_stable_until_registered_content_changes(tmp_path) -> None:
+    registered = tmp_path / "registered.md"
+    registered.write_text("first", encoding="utf-8")
+    initialize_project(tmp_path)
+    add_node(tmp_path, "registered", ("registered.md",))
+
+    with running_ui(tmp_path) as (_server, base_url):
+        get_json(f"{base_url}/api/project")
+        first = get_json(f"{base_url}/api/revision")
+        assert get_json(f"{base_url}/api/revision") == first
+        registered.write_text("second", encoding="utf-8")
+        changed = get_json(f"{base_url}/api/revision")
+
+    assert changed["ok"] is True
+    assert changed["project_revision"] != first["project_revision"]
+    assert changed["git_revision"] == first["git_revision"]
+
+
+def test_shutdown_requires_the_matching_control_token(tmp_path) -> None:
+    server = create_ui_server(
+        tmp_path, instance_id="shutdown-test", control_token="correct-token"
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    host, port = server.server_address[:2]
+    url = f"http://{host}:{port}/api/shutdown"
+    try:
+        wrong = Request(
+            url,
+            data=b"{}",
+            method="POST",
+            headers={"X-KFlow-Control-Token": "wrong-token"},
+        )
+        try:
+            urlopen(wrong, timeout=2)
+        except HTTPError as error:
+            assert error.code == 403
+            assert json.load(error)["issues"][0]["code"] == "invalid_control_token"
+        else:
+            raise AssertionError("wrong shutdown token unexpectedly succeeded")
+        assert thread.is_alive()
+
+        correct = Request(
+            url,
+            data=b"{}",
+            method="POST",
+            headers={"X-KFlow-Control-Token": "correct-token"},
+        )
+        with urlopen(correct, timeout=2) as response:
+            assert json.load(response) == {"ok": True}
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_project_endpoint_matches_public_query_and_excludes_contents(tmp_path) -> None:
@@ -393,6 +453,7 @@ def test_unknown_post_and_other_unsupported_methods_return_405(tmp_path) -> None
                 Request(f"{base_url}/api/git-history", data=b"{}", method="POST"),
                 "GET",
             ),
+            (Request(f"{base_url}/api/shutdown", method="GET"), "POST"),
             (Request(f"{base_url}/api/open-file", data=b"{}", method="PUT"), "POST"),
             (Request(f"{base_url}/api/open-file", method="GET"), "POST"),
         ):

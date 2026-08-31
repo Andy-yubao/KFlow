@@ -38,7 +38,7 @@ export function GraphToolbar({ view }: { view: GraphView }) {
         >
           <option value="all">All</option>
           <option value="current">Current</option>
-          <option value="attention">Needs attention</option>
+          <option value="attention">Needs review</option>
           <option value="unknown">Unknown</option>
         </select>
       </label>
@@ -53,6 +53,19 @@ export function GraphToolbar({ view }: { view: GraphView }) {
       <button className="clear-button" type="button" onClick={() => select(null)}>
         Clear selection
       </button>
+      <div className="graph-legend" aria-label="Graph legend">
+        <span><strong>Structure</strong></span>
+        <span className="legend-role source">Source</span>
+        <span className="legend-role intermediate">Intermediate</span>
+        <span className="legend-role terminal">Terminal</span>
+        <span className="legend-role isolated">Isolated</span>
+        <span className="legend-derivation">◆ Derivation</span>
+        <span className="legend-divider" aria-hidden="true" />
+        <span><strong>Status</strong></span>
+        <span className="legend-status current">✓ Current</span>
+        <span className="legend-status attention">! Needs review</span>
+        <span className="legend-status unknown">? Unknown</span>
+      </div>
     </section>
   );
 }

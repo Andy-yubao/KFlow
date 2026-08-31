@@ -112,4 +112,40 @@ describe("projectReducer", () => {
     expect(loaded.selectedGraphDiffBase).toBe("HEAD");
     expect(loaded.error).toBeNull();
   });
+
+  it("preserves an existing selection and clears only a removed entity", () => {
+    const selected = {
+      ...initialProjectState,
+      selectedElement: { kind: "knowledge" as const, id: "nd_keep" },
+    };
+    const graph = {
+      nodes: [{ id: "nd_keep" }],
+      derivations: [],
+    } as never;
+    const kept = projectReducer(selected, {
+      type: "loaded",
+      graph,
+      reviewOrder: [],
+    });
+    expect(kept.selectedElement).toEqual({ kind: "knowledge", id: "nd_keep" });
+
+    const removed = projectReducer(kept, {
+      type: "loaded",
+      graph: { nodes: [], derivations: [] } as never,
+      reviewOrder: [],
+    });
+    expect(removed.selectedElement).toBeNull();
+  });
+
+  it("keeps old graph diff visible while a new request is loading", () => {
+    const oldDiff = { schema_version: 2 } as never;
+    const state = { ...initialProjectState, graphDiff: oldDiff };
+    const loading = projectReducer(state, {
+      type: "graphDiffLoading",
+      base: "HEAD",
+      requestId: 1,
+    });
+    expect(loading.graphDiff).toBe(oldDiff);
+    expect(loading.graphDiffLoading).toBe(true);
+  });
 });

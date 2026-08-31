@@ -223,6 +223,8 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引、反向引用、邻接、状态与 review order 均为派生数据。
 
+Human Interface 后台实例的 PID、端口、项目绝对路径、启动时间、随机实例 ID、控制 token 和日志属于单机进程管理事实，保存在平台用户级 state 目录并按规范化项目根生成稳定键；它们不写入 `.kflow/runtime/`，不参与领域模型或 Git 历史。`.kflow/runtime/` 仍只是项目内可丢弃临时数据的保留目录。
+
 当前可靠性范围是单工作区、单写者。切换到任意 Git commit 后，应能仅凭该版本的规范元数据和项目文件重建拓扑与确认基线。
 
 历史与图差异以 Git commit 为数据源，不新增 KFlow event sourcing 或快照数据库。Git adapter 默认通过 `git archive HEAD` 重建基线，也允许使用 Git History 公共结果返回的完整 commit SHA。历史 SHA 必须是非空十六进制 object ID、解析为完整 commit，且可从当前 `HEAD` 到达；branch、tag、`HEAD~n` 和其他 revision 表达式不进入该接口。archive 解压到自动清理的临时目录，适配器定位 Git 仓库内可能位于子目录的 KFlow 项目根，再调用公共 `query_project_graph()` 重建图。整个流程不 checkout，也不修改工作区。
@@ -252,7 +254,7 @@ Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/pro
 - 固定关系类型枚举；
 - 级联确认；
 - 自动修改下游；
-- 远程 Web 服务、MCP Server、watcher 或后台常驻服务；
+- 远程 Web 服务、MCP Server、文件系统 watcher 或不受 `kflow ui start/status/stop` 管理的常驻服务；
 - event sourcing、快照数据库或时间旅行引擎。
 
 未来集成必须建立在当前稳定事实、查询和机器契约之上，不得改变这些核心边界。

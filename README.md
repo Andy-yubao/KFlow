@@ -166,11 +166,19 @@ JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序
 
 ```bash
 kflow ui
+kflow ui status
+kflow ui stop
 ```
 
-服务只监听 `127.0.0.1`，默认选择随机空闲端口并打开浏览器。可用 `--port 8765` 指定端口，或用 `--no-open` 禁止自动打开。
+`kflow ui` 是 `kflow ui start` 的常用简写：它在后台启动当前项目的实例并打开浏览器；已有健康实例时直接复用，因此同一项目不会重复启动。命令启动成功后立即返回。不同项目拥有彼此独立的实例；`status` 显示当前项目的 URL、PID 与启动时间，`stop` 只关闭当前项目。可用 `start --port 8765` 指定端口、`start --no-open` 禁止打开浏览器，或用 `start --foreground` 附着终端调试。
 
-界面保持只读，展示完整知识图、Inspector、状态、Review Order、登记文件打开入口和基于 Git 的结构历史与 Graph Diff。它与 CLI 共用 `query_project_graph` 和 `query_review_order`，不复制图、状态或排序算法。技术边界见 [Human Interface 架构](docs/human-interface.md)。
+服务只监听 `127.0.0.1`。运行记录位于用户级本机状态目录（Windows 为 `%LOCALAPPDATA%\KFlow\ui`，Linux/macOS 遵循 XDG state 目录或 `~/.local/state/kflow/ui`），按规范化项目根目录隔离；这些 PID、端口、随机实例身份和控制 token 不写入 `.kflow`，也不进入 Git。
+
+界面保持只读，并通过轻量 revision polling 自动感知已登记正文、KFlow 元数据、Confirmation 与 Git HEAD/结构历史变化；只有 token 变化时才安静刷新实际数据。手动 Reload 会忽略当前 revision 基线并强制完整同步，两种方式都保留合理的筛选、选择、历史基准和 viewport。
+
+Knowledge Node 主体视觉表达可重建的结构角色：Source（无 producer、有 consumer）、Intermediate（两者都有）、Terminal（有 producer、无 consumer）和 Isolated（两者都无）。Source/Isolated 为 L0；派生 Node 的 Layer 等于 producing Derivation 全部输入 Node 的最大 Layer 加一。Current、Needs review、Unknown 状态改由小面积文字 badge 表达，与结构颜色分离。当前领域模型没有 Knowledge Category，界面不会根据路径或文件名猜测类别。
+
+界面还展示 Inspector、Review Order、登记文件打开入口和基于 Git 的结构历史与 Graph Diff。它与 CLI 共用 `query_project_graph` 和 `query_review_order`，不复制图、状态或排序算法。技术边界见 [Human Interface 架构](docs/human-interface.md)。
 
 ## KFlow 与其他工具的分工
 

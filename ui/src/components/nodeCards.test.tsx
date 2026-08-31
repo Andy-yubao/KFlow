@@ -23,6 +23,8 @@ describe("graph node cards", () => {
       type: "knowledgeNode",
       data: {
         kind: "knowledge",
+        role: "isolated",
+        layer: 0,
         node: {
           id: "nd_architecture",
           name,
@@ -45,8 +47,13 @@ describe("graph node cards", () => {
     const markup = renderToStaticMarkup(<KnowledgeNodeCard {...props} />);
 
     expect(markup).toContain(`title="${name}"`);
-    expect(markup).toContain("knowledge-node unknown");
-    expect(markup).toContain("status-dot unknown");
+    expect(markup).toContain("knowledge-node role-isolated");
+    expect(markup).toContain("Isolated · L0");
+    expect(markup).toContain("status-badge unknown");
+    expect(markup).toContain(">?</span> Unknown");
+    expect(markup).toContain(
+      `aria-label="Knowledge Node: ${name}. Isolated, layer 0. Unknown."`,
+    );
   });
 
   it("keeps the full Derivation short text available", () => {

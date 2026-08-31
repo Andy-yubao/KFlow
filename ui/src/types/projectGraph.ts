@@ -59,6 +59,12 @@ export interface OpenFileResult {
   issues?: QueryIssue[];
 }
 
+export interface RevisionResult {
+  ok: true;
+  project_revision: string;
+  git_revision: string;
+}
+
 export interface StructuralNode {
   id: string;
   name: string;

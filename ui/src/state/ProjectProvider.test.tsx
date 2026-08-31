@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   fetchReviewOrder: vi.fn(),
   fetchGitHistory: vi.fn(),
   fetchGraphDiff: vi.fn(),
+  fetchRevision: vi.fn(),
 }));
 
 vi.mock("../api/project", () => api);
@@ -115,6 +116,11 @@ beforeEach(() => {
   api.fetchGraphDiff
     .mockReset()
     .mockImplementation(async (base = "HEAD") => diff(base));
+  api.fetchRevision.mockReset().mockResolvedValue({
+    ok: true,
+    project_revision: "project-1",
+    git_revision: "git-1",
+  });
 });
 
 describe("ProjectProvider Graph Diff history requests", () => {

@@ -146,6 +146,106 @@ describe("buildFlowGraph", () => {
     expect(graph.edges).toHaveLength(4);
   });
 
+  it("derives Source, Intermediate, Terminal, and Isolated roles from the bipartite graph", () => {
+    const project = manyToManyProject();
+    project.nodes.push({
+      id: "nd_isolated",
+      name: "Isolated",
+      files: ["docs/isolated.md"],
+      changed_files: [],
+      status: "valid",
+      reasons: [],
+    });
+    project.nodes.push({
+      id: "nd_final",
+      name: "Final",
+      files: ["docs/final.md"],
+      changed_files: [],
+      status: "valid",
+      reasons: [],
+    });
+    project.derivations.push({
+      id: "dv_publish",
+      short: "Publish output",
+      detail: "",
+      inputs: [
+        { node: "nd_c", name: "C", short: "Input C", detail: "" },
+      ],
+      outputs: [
+        { node: "nd_final", name: "Final", short: "Final", detail: "" },
+      ],
+    });
+    project.topological_order.push("nd_final", "nd_isolated");
+
+    const knowledge = buildFlowGraph(project).nodes.filter(
+      (node) => node.data.kind === "knowledge",
+    );
+    const roleById = new Map(
+      knowledge.map((node) => [
+        node.id,
+        node.data.kind === "knowledge" ? node.data.role : "",
+      ]),
+    );
+
+    expect(roleById).toEqual(
+      new Map([
+        ["node:nd_a", "source"],
+        ["node:nd_b", "source"],
+        ["node:nd_c", "intermediate"],
+        ["node:nd_d", "terminal"],
+        ["node:nd_final", "terminal"],
+        ["node:nd_isolated", "isolated"],
+      ]),
+    );
+  });
+
+  it("uses the maximum input layer through forks and joins", () => {
+    const project = manyToManyProject();
+    project.nodes.push(
+      {
+        id: "nd_e",
+        name: "E",
+        files: ["docs/e.md"],
+        changed_files: [],
+        status: "valid",
+        reasons: [],
+      },
+      {
+        id: "nd_isolated",
+        name: "Isolated",
+        files: ["docs/isolated.md"],
+        changed_files: [],
+        status: "valid",
+        reasons: [],
+      },
+    );
+    project.derivations.push({
+      id: "dv_join",
+      short: "Join branches",
+      detail: "",
+      inputs: [
+        { node: "nd_a", name: "A", short: "Direct", detail: "" },
+        { node: "nd_c", name: "C", short: "Derived", detail: "" },
+      ],
+      outputs: [{ node: "nd_e", name: "E", short: "Joined", detail: "" }],
+    });
+    project.topological_order.push("nd_e", "nd_isolated");
+
+    const layerById = new Map(
+      buildFlowGraph(project).nodes.flatMap((node) =>
+        node.data.kind === "knowledge"
+          ? [[node.data.node.id, node.data.layer] as const]
+          : [],
+      ),
+    );
+
+    expect(layerById.get("nd_a")).toBe(0);
+    expect(layerById.get("nd_c")).toBe(1);
+    expect(layerById.get("nd_d")).toBe(1);
+    expect(layerById.get("nd_e")).toBe(2);
+    expect(layerById.get("nd_isolated")).toBe(0);
+  });
+
   it("prefixes UI identities so domain IDs cannot collide", () => {
     expect(knowledgeFlowId("same")).toBe("node:same");
     expect(derivationFlowId("same")).toBe("derivation:same");

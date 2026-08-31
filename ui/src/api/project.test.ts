@@ -4,10 +4,12 @@ import {
   fetchGraphDiff,
   fetchGitHistory,
   fetchProjectGraph,
+  fetchRevision,
   fetchReviewOrder,
   openRegisteredFile,
   parseGitHistory,
   parseGraphDiff,
+  parseRevision,
 } from "./project";
 
 const headObjectId = "b2c3d4e5";
@@ -44,6 +46,10 @@ describe("read request cancellation", () => {
       ],
       ["/api/git-history", history],
       ["/api/graph-diff", unavailableDiff],
+      [
+        "/api/revision",
+        { ok: true, project_revision: "project-1", git_revision: "git-1" },
+      ],
     ]);
     const fetcher = vi.fn(async (url: string, _options?: RequestInit) =>
       new Response(JSON.stringify(bodies.get(url)), {
@@ -59,13 +65,33 @@ describe("read request cancellation", () => {
       fetchReviewOrder(controller.signal),
       fetchGitHistory(controller.signal),
       fetchGraphDiff("HEAD", controller.signal),
+      fetchRevision(controller.signal),
     ]);
 
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(5);
     for (const [, options] of fetcher.mock.calls) {
       expect(options?.signal).toBe(controller.signal);
     }
     vi.unstubAllGlobals();
+  });
+});
+
+describe("parseRevision", () => {
+  it("accepts opaque non-empty project and Git tokens", () => {
+    const revision = {
+      ok: true,
+      project_revision: "opaque-project-token",
+      git_revision: "opaque-git-token",
+    };
+    expect(parseRevision(revision)).toEqual(revision);
+  });
+
+  it.each([
+    { ok: false, project_revision: "p", git_revision: "g" },
+    { ok: true, project_revision: "", git_revision: "g" },
+    { ok: true, project_revision: "p", git_revision: 3 },
+  ])("rejects incompatible revision results", (revision) => {
+    expect(() => parseRevision(revision)).toThrow("incompatible result");
   });
 });
 

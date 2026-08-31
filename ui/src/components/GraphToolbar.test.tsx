@@ -33,6 +33,23 @@ function view(searchActive: boolean, searchMatchCount: number): GraphView {
 }
 
 describe("GraphToolbar search feedback", () => {
+  it("shows complete text legends for structure and status", () => {
+    render(<GraphToolbar view={view(false, 0)} />);
+    const legend = screen.getByLabelText("Graph legend");
+    for (const label of [
+      "Source",
+      "Intermediate",
+      "Terminal",
+      "Isolated",
+      "Derivation",
+      "Current",
+      "Needs review",
+      "Unknown",
+    ]) {
+      expect(legend.textContent).toContain(label);
+    }
+  });
+
   it("shows the no-match message only for an active search with zero results", async () => {
     const user = userEvent.setup();
     const rendered = render(<GraphToolbar view={view(false, 0)} />);

@@ -9,7 +9,7 @@ import {
   type NodeMouseHandler,
   type NodeTypes,
 } from "@xyflow/react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { buildFlowGraph, type ProjectFlowNode } from "../graph/buildFlowGraph";
 import type { GraphView } from "../graph/graphView";
@@ -48,6 +48,8 @@ function ProjectGraphView({
 }) {
   const { state, select } = useProject();
   const { fitView } = useReactFlow();
+  const previousGraph = useRef<ProjectGraphResult | null>(null);
+  const previousSelection = useRef<string | null>(null);
   const flow = useMemo(() => {
     const visibleNodes = new Set(view.visibleFlowNodeIds);
     const visibleEdges = new Set(view.visibleEdgeIds);
@@ -79,6 +81,10 @@ function ProjectGraphView({
   }, [graph, state.selectedElement, view]);
 
   useEffect(() => {
+    const graphWasReplaced =
+      previousGraph.current !== null && previousGraph.current !== graph;
+    previousGraph.current = graph;
+    if (graphWasReplaced) return;
     if (state.selectedElement !== null) return;
     const frame = window.requestAnimationFrame(() => {
       void fitView({ padding: 0.18, duration: 0 });
@@ -87,6 +93,13 @@ function ProjectGraphView({
   }, [fitView, flow.nodes, state.selectedElement]);
 
   useEffect(() => {
+    const selectionKey =
+      state.selectedElement === null
+        ? null
+        : `${state.selectedElement.kind}:${state.selectedElement.id}`;
+    const selectionChanged = previousSelection.current !== selectionKey;
+    previousSelection.current = selectionKey;
+    if (!selectionChanged) return;
     if (state.selectedElement === null) return;
     const selectedId =
       state.selectedElement.kind === "knowledge"

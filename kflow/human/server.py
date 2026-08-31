@@ -1,10 +1,13 @@
 """Local read-only HTTP server for the KFlow Human Interface."""
 
 import json
+import hmac
 import mimetypes
 import os
 import subprocess
 import sys
+import threading
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -21,16 +24,29 @@ from kflow.human.git_snapshot import (
     unavailable_git_history,
 )
 from kflow.human.graph_diff import unavailable_graph_diff
+from kflow.human.revision import RevisionTracker
 
 LOOPBACK_ADDRESS = "127.0.0.1"
 SERVICE_NAME = "kflow-human-interface"
 MAX_JSON_BODY_BYTES = 64 * 1024
 
 
-def create_ui_server(root: Path, port: int = 0) -> ThreadingHTTPServer:
+def create_ui_server(
+    root: Path,
+    port: int = 0,
+    *,
+    instance_id: str | None = None,
+    control_token: str | None = None,
+) -> ThreadingHTTPServer:
     """Create a loopback-only Human Interface server without starting it."""
     project_root = Path(root).resolve()
-    handler = _handler_for(project_root)
+    project_identity = str(project_root)
+    handler = _handler_for(
+        project_root,
+        project_identity,
+        instance_id or uuid.uuid4().hex,
+        control_token,
+    )
     return ThreadingHTTPServer((LOOPBACK_ADDRESS, port), handler)
 
 
@@ -53,16 +69,37 @@ def run_ui(root: Path, port: int = 0, open_browser: bool = True) -> None:
         server.server_close()
 
 
-def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
+def _handler_for(
+    root: Path,
+    project_identity: str,
+    instance_id: str,
+    control_token: str | None,
+) -> type[BaseHTTPRequestHandler]:
+    revision_tracker = RevisionTracker(root)
+
     class HumanInterfaceHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             request = urlsplit(self.path)
             path = request.path
             if path == "/api/health":
-                self._send_json({"ok": True, "service": SERVICE_NAME})
+                self._send_json(
+                    {
+                        "ok": True,
+                        "service": SERVICE_NAME,
+                        "project_root": project_identity,
+                        "instance_id": instance_id,
+                    }
+                )
                 return
             if path == "/api/project":
-                self._send_json(query_project_graph(root))
+                result = query_project_graph(root)
+                revision_tracker.observe_project_graph(result)
+                self._send_json(result)
+                return
+            if path == "/api/revision":
+                if not revision_tracker.observed:
+                    revision_tracker.observe_project_graph(query_project_graph(root))
+                self._send_json(revision_tracker.result())
                 return
             if path == "/api/review-order":
                 self._send_json(query_review_order(root))
@@ -73,7 +110,7 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             if path == "/api/graph-diff":
                 self._graph_diff(request.query)
                 return
-            if path == "/api/open-file":
+            if path in {"/api/open-file", "/api/shutdown"}:
                 self._method_not_allowed("POST")
                 return
             self._serve_static(path)
@@ -124,6 +161,9 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             if path == "/api/open-file":
                 self._open_file()
                 return
+            if path == "/api/shutdown":
+                self._shutdown()
+                return
             self._method_not_allowed("GET")
 
         def do_PUT(self) -> None:  # noqa: N802
@@ -168,6 +208,28 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 )
                 return
             self._send_json({"ok": True, "path": requested_path})
+
+        def _shutdown(self) -> None:
+            supplied = self.headers.get("X-KFlow-Control-Token", "")
+            if control_token is None or not hmac.compare_digest(
+                supplied, control_token
+            ):
+                self._send_json(
+                    {
+                        "ok": False,
+                        "issues": [
+                            {
+                                "code": "invalid_control_token",
+                                "message": "shutdown control token is invalid",
+                                "references": [],
+                            }
+                        ],
+                    },
+                    status=403,
+                )
+                return
+            self._send_json({"ok": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
         def _read_json_object(self) -> tuple[dict, tuple[str, str] | None]:
             try:
@@ -227,7 +289,9 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 self.rfile.read(content_length)
             self.send_response(405)
             allowed_method = allow or (
-                "POST" if urlsplit(self.path).path == "/api/open-file" else "GET"
+                "POST"
+                if urlsplit(self.path).path in {"/api/open-file", "/api/shutdown"}
+                else "GET"
             )
             self.send_header("Allow", allowed_method)
             self.send_header("Connection", "close")
@@ -254,6 +318,7 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             try:
                 self.wfile.write(body)
+                self.wfile.flush()
             except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
                 return
 

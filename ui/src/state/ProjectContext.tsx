@@ -12,6 +12,7 @@ import {
   fetchGraphDiff,
   fetchGitHistory,
   fetchProjectGraph,
+  fetchRevision,
   fetchReviewOrder,
 } from "../api/project";
 import type { StatusFilter } from "../graph/graphView";
@@ -19,6 +20,7 @@ import type {
   GitHistoryResult,
   GraphDiffResult,
   ProjectGraphResult,
+  RevisionResult,
 } from "../types/projectGraph";
 
 export type SelectedElement =
@@ -111,7 +113,12 @@ export function projectReducer(
         reviewOrder: action.reviewOrder,
         loading: false,
         error: null,
-        selectedElement: null,
+        selectedElement: selectionStillExists(
+          action.graph,
+          state.selectedElement,
+        )
+          ? state.selectedElement
+          : null,
       };
     case "gitHistoryLoaded":
       return {
@@ -124,16 +131,13 @@ export function projectReducer(
     case "gitHistoryFailed":
       return {
         ...state,
-        gitHistory: null,
         gitHistoryLoading: false,
         gitHistoryError: action.message,
-        selectedGraphDiffBase: "HEAD",
       };
     case "graphDiffLoading":
       return {
         ...state,
         selectedGraphDiffBase: action.base,
-        graphDiff: null,
         graphDiffLoading: true,
         graphDiffError: null,
         graphDiffRequestId: action.requestId,
@@ -186,6 +190,16 @@ export function projectReducer(
   }
 }
 
+function selectionStillExists(
+  graph: ProjectGraphResult,
+  selection: SelectedElement,
+): boolean {
+  if (selection === null) return true;
+  return selection.kind === "knowledge"
+    ? graph.nodes.some((node) => node.id === selection.id)
+    : graph.derivations.some((derivation) => derivation.id === selection.id);
+}
+
 interface ProjectContextValue {
   state: ProjectState;
   reload: () => Promise<void>;
@@ -209,8 +223,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const graphDiffController = useRef<AbortController | null>(null);
   const reloadGeneration = useRef(0);
   const reloadController = useRef<AbortController | null>(null);
+  const revisionController = useRef<AbortController | null>(null);
+  const revisionBaseline = useRef<RevisionResult | null>(null);
 
-  const loadGraphDiff = useCallback(async (base: string) => {
+  const loadGraphDiff = useCallback(async (base: string): Promise<boolean> => {
     selectedBase.current = base;
     graphDiffController.current?.abort();
     const controller = new AbortController();
@@ -219,13 +235,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "graphDiffLoading", base, requestId });
     try {
       const result = await fetchGraphDiff(base, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return false;
       dispatch({ type: "graphDiffLoaded", result, requestId });
+      return true;
     } catch (error: unknown) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return false;
       const message =
         error instanceof Error ? error.message : "Unknown Graph Diff error.";
       dispatch({ type: "graphDiffFailed", message, requestId });
+      return false;
     }
   }, []);
 
@@ -233,12 +251,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     const generation = ++reloadGeneration.current;
     reloadController.current?.abort();
     graphDiffController.current?.abort();
+    revisionController.current?.abort();
+    revisionController.current = null;
     const controller = new AbortController();
     reloadController.current = controller;
     const isCurrent = () =>
       generation === reloadGeneration.current && !controller.signal.aborted;
 
     dispatch({ type: "loading" });
+    let refreshFailed = false;
     const coreRequest = (async () => {
       try {
         const [graph, review] = await Promise.all([
@@ -249,6 +270,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "loaded", graph, reviewOrder: review.review_order });
       } catch (error: unknown) {
         if (!isCurrent()) return;
+        refreshFailed = true;
         const message =
           error instanceof Error ? error.message : "Unknown network error.";
         dispatch({ type: "failed", message });
@@ -276,25 +298,192 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         });
       } catch (error: unknown) {
         if (!isCurrent()) return;
+        refreshFailed = true;
         const message =
           error instanceof Error ? error.message : "Unknown Git history error.";
         selectedBase.current = "HEAD";
         dispatch({ type: "gitHistoryFailed", message });
       }
       if (!isCurrent()) return;
-      await loadGraphDiff(base);
+      if (!(await loadGraphDiff(base))) refreshFailed = true;
     })();
 
     await Promise.all([coreRequest, historyRequest]);
+    if (!isCurrent() || refreshFailed) return;
+    try {
+      revisionBaseline.current = await fetchRevision(controller.signal);
+    } catch (error: unknown) {
+      if (!isCurrent()) return;
+      const message =
+        error instanceof Error ? error.message : "Unknown revision error.";
+      dispatch({ type: "failed", message });
+    }
   }, [loadGraphDiff]);
+
+  const refreshAutomatically = useCallback(
+    async (
+      nextRevision: RevisionResult,
+      projectChanged: boolean,
+      gitChanged: boolean,
+    ) => {
+      const generation = ++reloadGeneration.current;
+      reloadController.current?.abort();
+      graphDiffController.current?.abort();
+      const controller = new AbortController();
+      reloadController.current = controller;
+      const isCurrent = () =>
+        generation === reloadGeneration.current && !controller.signal.aborted;
+
+      let refreshFailed = false;
+      const coreRequest = projectChanged
+        ? (async () => {
+            try {
+              const [graph, review] = await Promise.all([
+                fetchProjectGraph(controller.signal),
+                fetchReviewOrder(controller.signal),
+              ]);
+              if (!isCurrent()) return;
+              dispatch({
+                type: "loaded",
+                graph,
+                reviewOrder: review.review_order,
+              });
+            } catch (error: unknown) {
+              if (!isCurrent()) return;
+              refreshFailed = true;
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown automatic refresh error.";
+              dispatch({ type: "failed", message });
+            }
+          })()
+        : Promise.resolve();
+
+      const historyAndDiffRequest = (async () => {
+        let base = selectedBase.current;
+        if (gitChanged) {
+          try {
+            const history = await fetchGitHistory(controller.signal);
+            if (!isCurrent()) return;
+            base = selectedBase.current;
+            const availableCommits = new Set(
+              history.available
+                ? history.commits.map((commit) => commit.commit)
+                : [],
+            );
+            if (base !== "HEAD" && !availableCommits.has(base)) {
+              base = "HEAD";
+              selectedBase.current = base;
+            }
+            dispatch({
+              type: "gitHistoryLoaded",
+              result: history,
+              selectedBase: base,
+            });
+          } catch (error: unknown) {
+            if (!isCurrent()) return;
+            refreshFailed = true;
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Unknown Git history error.";
+            dispatch({ type: "gitHistoryFailed", message });
+          }
+        }
+        if (!isCurrent()) return;
+        if (!(await loadGraphDiff(selectedBase.current))) refreshFailed = true;
+      })();
+
+      await Promise.all([coreRequest, historyAndDiffRequest]);
+      if (!isCurrent() || refreshFailed) return;
+      if (projectChanged) {
+        try {
+          revisionBaseline.current = await fetchRevision(controller.signal);
+        } catch {
+          if (isCurrent()) revisionBaseline.current = nextRevision;
+        }
+      } else {
+        revisionBaseline.current = nextRevision;
+      }
+    },
+    [loadGraphDiff],
+  );
 
   useEffect(() => {
     void reload();
     return () => {
       reloadController.current?.abort();
       graphDiffController.current?.abort();
+      revisionController.current?.abort();
     };
   }, [reload]);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    let debounceTimer: number | undefined;
+    let disposed = false;
+
+    const schedule = (delay?: number) => {
+      if (disposed) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => void checkRevision(),
+        delay ?? (document.hidden ? 5000 : 1000),
+      );
+    };
+    const checkRevision = async () => {
+      if (disposed || revisionController.current !== null) return;
+      const controller = new AbortController();
+      revisionController.current = controller;
+      try {
+        const next = await fetchRevision(controller.signal);
+        if (disposed || controller.signal.aborted) return;
+        const previous = revisionBaseline.current;
+        if (previous === null) {
+          revisionBaseline.current = next;
+        } else {
+          const projectChanged =
+            next.project_revision !== previous.project_revision;
+          const gitChanged = next.git_revision !== previous.git_revision;
+          if (projectChanged || gitChanged) {
+            await new Promise<void>((resolve) => {
+              debounceTimer = window.setTimeout(resolve, 150);
+            });
+            if (!disposed && !controller.signal.aborted) {
+              await refreshAutomatically(next, projectChanged, gitChanged);
+            }
+          }
+        }
+      } catch (error: unknown) {
+        if (!disposed && !controller.signal.aborted) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unknown automatic update error.";
+          dispatch({ type: "failed", message });
+        }
+      } finally {
+        if (revisionController.current === controller) {
+          revisionController.current = null;
+        }
+        schedule();
+      }
+    };
+    const checkNow = () => schedule(0);
+    document.addEventListener("visibilitychange", checkNow);
+    window.addEventListener("focus", checkNow);
+    schedule();
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      window.clearTimeout(debounceTimer);
+      revisionController.current?.abort();
+      revisionController.current = null;
+      document.removeEventListener("visibilitychange", checkNow);
+      window.removeEventListener("focus", checkNow);
+    };
+  }, [refreshAutomatically]);
 
   const select = useCallback((element: SelectedElement) => {
     dispatch({ type: "selected", element });

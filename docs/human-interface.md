@@ -36,12 +36,13 @@ Python Core
 ## 4. 运行流程
 
 ```text
-kflow ui
+kflow ui start（kflow ui 为常用简写）
 → 确认当前工作目录
-→ 在 127.0.0.1 的随机空闲端口启动服务
-→ 输出本地 URL 并默认打开浏览器
+→ 读取用户级运行记录并通过 PID、端口和 health identity 核验实例
+→ 已有健康实例时复用，否则在 127.0.0.1 的随机空闲端口启动后台服务
+→ health 通过后输出本地 URL、默认打开浏览器并立即返回
 → 浏览器加载包内静态资源
-→ 前端分别请求 GET /api/project、GET /api/review-order、GET /api/git-history 与 GET /api/graph-diff
+→ 前端请求 GET /api/revision，并按变化分别刷新 Project Graph、Review Order、Git History 与 Graph Diff
 → Project Graph 与 Review Order 完成后立即更新核心界面，不等待 Git History
 → Git History 独立校正历史基线，再请求对应 Graph Diff
 → GET /api/project 调用 query_project_graph(root)
@@ -52,7 +53,9 @@ kflow ui
 → 用户在单页图和 Inspector 中只读查看项目
 ```
 
-服务以前台进程运行，按 `Ctrl+C` 正常关闭；不创建后台 daemon、PID 文件、轮询器或 watcher。
+同一规范化项目根只对应一个后台实例，不同项目可以并行运行。`kflow ui status` 显示当前项目的运行状态、项目根、URL、PID 和启动时间；`kflow ui stop` 只关闭经身份核验的当前项目实例，重复 stop 返回简短 stopped 结果。`kflow ui start --foreground` 保留附着终端、按 `Ctrl+C` 关闭的调试入口。
+
+运行状态位于用户级本机 state 目录：Windows 使用 `%LOCALAPPDATA%\KFlow\ui`，其他平台优先使用 `$XDG_STATE_HOME/kflow/ui`，否则使用 `~/.local/state/kflow/ui`。文件名是规范化项目根的稳定 SHA-256 键，内容包括 `project_root`、`pid`、`port`、`started_at`、随机 `instance_id` 和随机 `control_token`；相邻日志文件用于启动失败诊断。它们不写入 `.kflow`，不进入 Git。start/status/stop 不只检查 PID，还核对 loopback health 返回的服务名、项目根和实例 ID，因此陈旧状态、PID 复用、端口被其他程序占用或损坏 JSON 都不会误认或误杀别的进程。
 
 ## 5. API
 
@@ -60,14 +63,20 @@ kflow ui
 
 ```text
 GET /api/health
+GET /api/revision
 GET /api/project
 GET /api/review-order
 GET /api/git-history
 GET /api/graph-diff
 POST /api/open-file
+POST /api/shutdown
 ```
 
-`GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
+`GET /api/health` 返回服务名、规范化项目根和随机实例 ID，供显式生命周期命令核验身份。`POST /api/shutdown` 只接受运行记录中的随机控制 token；token 不进入静态页面或其他浏览器响应，接口只关闭当前 loopback 服务。
+
+`GET /api/revision` 返回不透明的 `project_revision` 与 `git_revision`。前者确定性覆盖 `.kflow/project.json`、Node、Derivation、Confirmation 和公共项目图已登记的正文文件；后者覆盖当前分支身份、HEAD 与结构提交列表。服务只在内存中保留公共查询返回的登记路径集来确定监测范围，不缓存第二份项目图，不复制 Core 的 status、impact 或 review-order 算法。无关未登记文件不改变核心 token。
+
+`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
 
 `GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 或 `<project-relative-path>/.kflow/derivations/` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。仓库相对路径使用 literal Git pathspec，因此目录中的空格、中文和 pathspec 元字符不会扩大匹配范围。confirmation-only commit 和普通正文提交不进入列表。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
 
@@ -91,6 +100,21 @@ KnowledgeNode → DerivationNode → KnowledgeNode
 
 每个 input role 形成一条 Knowledge Node 到 Derivation 的边，每个 output role 形成一条 Derivation 到 Knowledge Node 的边。一个多输入、多输出 Derivation 只形成一个可选择的中间节点，不展开为 input 与 output 的笛卡尔积。角色的 `short` 与 `detail` 保留在边数据和 Inspector 中。
 
+展示层根据完整二部图纯计算 Knowledge Node 结构角色，不写入 schema：
+
+- Source：没有 producing Derivation，至少有一个 consumer；
+- Intermediate：同时有 producer 和 consumer；
+- Terminal：至少有一个 producer，没有 consumer；
+- Isolated：producer 与 consumer 都没有。
+
+Source 与 Isolated 为 L0。派生 Node 的 Layer 是 producing Derivation 的全部 input Node Layer 的最大值加一；该递归定义直接覆盖 1-to-1、1-to-N、N-to-1、N-to-M、分叉与合流，不用数组下标猜层级。
+
+Knowledge Node 主体边框和顶部结构条使用低疲劳色系表达角色；Isolated 使用灰色虚线。当前三态使用独立的小面积 badge，同时带符号、文字和颜色：`✓ Current`、`! Needs review`、`? Unknown`。状态不再占据整张卡片主边框，项目无效仍由页面级 Validation banner 表达。Derivation 保持紫色小连接点，图例同时用文字列出全部结构角色、Derivation 和三种状态。当前领域模型没有 Knowledge Category，展示层不从目录、扩展名或文件名猜测。
+
+前端在页面可见时约每秒请求 revision，隐藏时降为约五秒，重新聚焦时立即检查；请求自调度且不重叠，连续变化在刷新前短暂 debounce。只有 token 改变才请求实际数据：项目 token 刷新 Project Graph、Review Order 与当前 Graph Diff；Git token 刷新 Git History 与 Graph Diff。手动 Reload 忽略 token 缓存并完整刷新四类数据，再更新 revision 基线。
+
+自动与手动刷新都保留旧图、搜索、状态筛选、Only needs review、面板折叠、仍存在的选择、仍有效的历史基准和当前 viewport；实体消失时清除选择，历史 SHA 消失时回退 HEAD。自动刷新不显示首次加载式 Loading、不自动 fitView；失败只显示非阻塞错误。统一的 AbortController、reload generation 和 Graph Diff 单调 request ID 防止自动刷新、Reload 与快速历史切换之间的旧响应覆盖。
+
 ## 7. 前端源码与构建产物
 
 ```text
@@ -106,22 +130,23 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 ## 8. 本地服务边界
 
 - 固定绑定 `127.0.0.1`，默认使用操作系统分配的随机端口，不提供远程监听选项。
+- 后台子进程在 Windows 使用隐藏 detached process，在其他平台使用新 session；父进程必须等待匹配的 health identity 成功后才返回，失败时清理自己创建的子进程和状态。
 - Human Interface 不修改 KFlow 元数据和项目文件。它允许有限的本地只读辅助动作，例如打开已经登记的文件。
-- 除受限的 `POST /api/open-file` 外不提供 POST；未知 POST 和其他修改方法返回 405。服务没有账户、登录、认证或宽泛 CORS。
+- 除受限的 `POST /api/open-file` 与带随机控制 token 的本机 `POST /api/shutdown` 外不提供 POST；未知 POST 和其他修改方法返回 405。服务没有账户、登录、认证或宽泛 CORS。
 - 静态文件只能来自 Python 包内的 `kflow/human/static/`，请求路径不能越出该目录。
 - 该服务只用于本机项目查看，不是生产互联网服务器。
 
 ## 9. 当前能力
 
-当前版本提供单页面项目摘要、完整知识图、缩放、平移、fit view、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Graph Diff vs HEAD / selected structural commit、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open、错误/空项目状态以及手动 Reload。正式桌面布局已收紧纵向高度：主画布占用可用高度，右侧面板在需要时滚动；窄屏继续使用响应式排列。
+当前版本提供后台 start/status/stop 与可选前台调试、revision 自动更新、手动 Reload、单页面项目摘要、完整知识图、结构角色与 Layer、独立状态 badge、缩放、平移、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Graph Diff vs HEAD / selected structural commit、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open 和错误/空项目状态。正式桌面布局已收紧纵向高度：主画布占用可用高度，右侧面板在需要时滚动；窄屏继续使用响应式排列。
 
 Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。悬停显示 `short` 的轻量 tooltip，单击后 Inspector 显示 ID、完整语义和全部输入输出角色。搜索有命中时只降低非命中上下文的透明度；没有任何 Node 或 Derivation 命中时保持图的正常不透明度，并在搜索框附近显示明确提示。状态与 needs-review 筛选仍独立控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
 
 Graph Diff 面板默认显示 `HEAD`，并提供紧凑的结构提交选择器；每项显示短 SHA、subject 和 committed time。切换基准只请求 Graph Diff，不重新请求项目图或 Review Order；快速切换同时使用请求取消和单调 request id，较早响应不能覆盖最新选择。Reload 在原 SHA 仍位于历史列表时保留选择，否则回退 `HEAD`。Changed 项显示公开结构的 before → after；当前仍存在的新增或修改实体复用 `ProjectContext` 的选择与画布定位；已删除实体只显示历史公开结构，不尝试选择当前不存在的画布元素。这里的 `topology_changed` 只表示稳定拓扑顺序是否变化，不表示任意边结构是否变化。
 
-当前搜索、筛选、选择、清除选择和手动缩放触发的 fit view、缩放和平移重置行为是已接受现状。本阶段不加入 viewport persistence，也不改写 React Flow 定位逻辑。
+搜索、筛选、选择与清除选择仍可触发既有定位行为；数据自动或手动刷新本身不触发 fitView，因而保留当前 viewport。viewport 不持久化到领域层或跨浏览器会话保存。
 
-当前不实现 commit A vs commit B、分支/tag 选择、完整历史时间线、历史图替换主画布、Git patch 或正文 diff、checkout、编辑、confirm、正文预览、自动摘要、自动轮询、watcher、WebSocket、远程访问和桌面封装。
+当前不实现 commit A vs commit B、分支/tag 选择、完整历史时间线、历史图替换主画布、Git patch 或正文 diff、checkout、编辑、confirm、正文预览、自动摘要、文件系统 watcher、WebSocket、远程访问和桌面封装。
 
 ## 10. 后续演进
 

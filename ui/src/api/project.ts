@@ -11,6 +11,7 @@ import type {
   ProjectGraphResult,
   QueryIssue,
   ReviewOrderResult,
+  RevisionResult,
   StructuralNode,
 } from "../types/projectGraph";
 
@@ -188,6 +189,18 @@ function parseReviewOrder(value: unknown): ReviewOrderResult {
   return value as unknown as ReviewOrderResult;
 }
 
+export function parseRevision(value: unknown): RevisionResult {
+  if (
+    !isRecord(value) ||
+    value.ok !== true ||
+    !isNonEmptyString(value.project_revision) ||
+    !isNonEmptyString(value.git_revision)
+  ) {
+    throw new Error("The revision endpoint returned an incompatible result.");
+  }
+  return value as unknown as RevisionResult;
+}
+
 export function parseGraphDiff(value: unknown): GraphDiffResult {
   if (
     !isRecord(value) ||
@@ -349,6 +362,20 @@ export async function fetchGitHistory(
     throw new Error(`Git history request failed with HTTP ${response.status}.`);
   }
   return parseGitHistory(await readJson(response, "Git history"));
+}
+
+export async function fetchRevision(
+  signal?: AbortSignal,
+): Promise<RevisionResult> {
+  const response = await fetch("/api/revision", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Revision request failed with HTTP ${response.status}.`);
+  }
+  return parseRevision(await readJson(response, "revision"));
 }
 
 export async function openRegisteredFile(

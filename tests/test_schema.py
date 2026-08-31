@@ -1,6 +1,7 @@
 import ast
 from pathlib import Path
 
+import kflow.core.storage as storage
 from kflow.core.schema_versions import (
     METADATA_SCHEMA_VERSION,
     PROJECT_GRAPH_SCHEMA_VERSION,
@@ -12,6 +13,7 @@ def test_protocol_versions_are_explicit_independent_constants() -> None:
     assert METADATA_SCHEMA_VERSION == 2
     assert PROJECT_GRAPH_SCHEMA_VERSION == 2
     assert TASK_QUERY_SCHEMA_VERSION == 3
+    assert not hasattr(storage, "SCHEMA_VERSION")
 
     source = Path("kflow/core/schema_versions.py").read_text(encoding="utf-8")
     assignments = {

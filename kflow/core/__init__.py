@@ -27,7 +27,6 @@ from kflow.core.schema_versions import (
 )
 from kflow.core.status import NodeStatus, evaluate_statuses
 from kflow.core.storage import (
-    SCHEMA_VERSION,
     StorageError,
     initialize_project,
     load_confirmations,
@@ -67,7 +66,6 @@ __all__ = [
     "ProjectGraphResult",
     "PROJECT_GRAPH_SCHEMA_VERSION",
     "ReviewOrderResult",
-    "SCHEMA_VERSION",
     "ScanIssue",
     "ScanResult",
     "StorageError",

@@ -23,8 +23,6 @@ from kflow.core.schema_versions import METADATA_SCHEMA_VERSION
 
 
 KFLOW_DIR = ".kflow"
-# Compatibility name for callers that imported the original metadata constant.
-SCHEMA_VERSION = METADATA_SCHEMA_VERSION
 
 
 class StorageError(ValueError):

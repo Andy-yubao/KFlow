@@ -79,7 +79,7 @@ query schema 从 v2 升至 v3，因为旧共享封套中的 `relations`、`impac
 }
 ```
 
-Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。角色按 Node 拓扑位置排序。
+Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。`inputs` 与 `outputs` 各自按规范 Node ID 排序。
 
 ## 3. ProjectGraphResult v2
 
@@ -101,7 +101,7 @@ Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。角色按
 }
 ```
 
-`nodes` 按稳定拓扑序；`derivations` 按 output Node 拓扑位置序列、再按 Derivation ID 排序。
+`nodes` 按 `topological_order`；`derivations` 按 Derivation ID 排序；每个 Derivation 的 `inputs` 与 `outputs` 各自按规范 Node ID 排序。这些是冻结的 Project Graph v2 数组顺序，与默认文本为了阅读而采用的拓扑投影相互独立。
 
 ## 4. ContextResult v3
 

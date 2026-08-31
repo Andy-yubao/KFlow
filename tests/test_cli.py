@@ -112,6 +112,47 @@ def test_overview_uses_topological_derivations_without_ids_or_default_status(
     assert "nd_" not in text and "dv_" not in text
 
 
+def test_overview_preserves_complete_many_to_many_derivation(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    nodes = tuple(
+        KnowledgeNode(f"nd_{name}", name, (f"docs/{name}.md",))
+        for name in ("a", "b", "c", "d")
+    )
+    derivation = Derivation(
+        "dv_many",
+        "Combine inputs",
+        "",
+        (
+            DerivationInput("nd_a", "input a", ""),
+            DerivationInput("nd_b", "input b", ""),
+        ),
+        (
+            DerivationOutput("nd_c", "output c", ""),
+            DerivationOutput("nd_d", "output d", ""),
+        ),
+    )
+    for node in nodes:
+        path = tmp_path / node.files[0]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(node.name, encoding="utf-8")
+    initialize_project(tmp_path)
+    save_graph(tmp_path, KnowledgeGraph.build(nodes, (derivation,)))
+
+    main(["overview"])
+
+    assert capsys.readouterr().out == (
+        "KFlow project: 4 nodes, 1 derivations\n"
+        "\n"
+        "a — docs/a.md\n"
+        "b — docs/b.md\n"
+        "  └─ Combine inputs\n"
+        "     ├─→ c — docs/c.md\n"
+        "     └─→ d — docs/d.md\n"
+    )
+
+
 def test_overview_status_marks_only_nodes_needing_review(
     tmp_path, monkeypatch, capsys
 ) -> None:
@@ -222,4 +263,10 @@ def test_validate_prints_only_real_issues(tmp_path, monkeypatch, capsys) -> None
         main(["overview", "--status"])
     overview = capsys.readouterr()
     assert overview.err == ""
+    assert "Project status: invalid" in overview.out
+    assert (
+        "Review status unavailable until validation issues are resolved."
+        in overview.out
+    )
+    assert "Need review: 0 nodes" not in overview.out
     assert "Validation issues\n\n- missing_file: docs/architecture.md" in overview.out

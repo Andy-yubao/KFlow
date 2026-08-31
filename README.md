@@ -143,9 +143,9 @@ Node reference 可以是精确 Node ID、唯一名称或已登记文件路径。
 
 默认文本面向人和直接阅读终端的 Agent，使用 Node 名称，不展示随机内部 ID。详细文本语义和 golden outputs 见 [CLI 信息架构](docs/cli-information-architecture.md)。
 
-## Agent Interface 与 `--json`
+## 机器接口与 `--json`
 
-机器消费者应使用 JSON，不解析默认文本：
+直接操作终端的 Agent 使用上面的默认文本闭环。MCP、IDE、自动化脚本和其他程序化消费者应使用 JSON，不解析默认文本：
 
 ```bash
 kflow overview --json
@@ -156,7 +156,7 @@ kflow review-order --json
 kflow review-order architecture --json
 ```
 
-完整项目图保持 `schema_version: 2`，供 Agent 和 Human Interface 共享。按任务拆分的 `context`、`impact`、`review-order` 以及 CLI operation envelope 使用 query schema v3。Git 跟踪的 metadata schema 仍为 v2。具体字段见 [机器契约](docs/schema.md)。
+完整项目图保持 `schema_version: 2`，供程序化 Agent 适配器和 Human Interface 共享。按任务拆分的 `context`、`impact`、`review-order` 以及 CLI operation envelope 使用 query schema v3。Git 跟踪的 metadata schema 仍为 v2。具体字段见 [机器契约](docs/schema.md)。
 
 JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序和 validation issues，不包含正文、片段、自动摘要或 Prompt。除前台交互式 `ui` 外，其他公开命令支持把 `--json` 放在子命令前或后。
 

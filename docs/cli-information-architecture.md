@@ -37,17 +37,17 @@ kflow ui ...
 
 Node reference 可以是精确 Node ID、唯一名称或已登记文件路径；默认文本始终使用名称。
 
-## 3. 稳定排序
+## 3. 默认文本的稳定排序
 
 Node 使用 Core graph 的稳定拓扑顺序：所有上游先于下游；同时可用的 Node 以稳定 Node ID 打破平局。
 
-Derivation 按以下键排序：
+`overview` 的默认文本把 Project Graph v2 投影为阅读顺序。Derivation 按以下键排序：
 
 1. 最早 output Node 的拓扑位置；
 2. 其余 output Node 的拓扑位置序列；
 3. Derivation ID 作为最终内部 tie-breaker。
 
-Derivation 内的 inputs 和 outputs 均按 Node 拓扑位置排序。默认文本不展示用于稳定排序的 ID。
+Derivation 内的 inputs 和 outputs 均按 Node 拓扑位置排序。默认文本不展示用于稳定排序的 ID。这个展示投影不改变 Project Graph v2 的冻结机器顺序：`derivations` 按 Derivation ID，角色按 Node ID。
 
 ## 4. 标准 Derivation 文本格式
 
@@ -110,6 +110,13 @@ constraints — docs/constraints.md
 ```
 
 validation issue 只在实际存在时追加显示。
+
+项目存在 validation issue 时，`overview --status` 不报告可能误导的零待检查数，而是显示：
+
+```text
+Project status: invalid
+Review status unavailable until validation issues are resolved.
+```
 
 ## 6. `context NODE`
 
@@ -229,7 +236,7 @@ KFlow metadata is invalid.
 - missing_file: docs/architecture.md
 ```
 
-错误的 JSON 最少包含 `ok: false`、当前查询协议版本和非空 `issues`；stdout 不混入普通文本。默认文本错误写入 stderr。issue 使用 `code`、`message`、`references`。
+错误的 JSON 最少包含 `ok: false`、当前查询协议版本和非空 `issues`；stdout 不混入普通文本。默认文本错误写入 stderr。issue 使用 `code`、`message`、`references`。默认文本可把 `missing_file`、`unreadable_file` 简写为登记路径；cycle、multiple producer、duplicate name、unknown node 等图或查询错误保留完整 message。
 
 ## 11. 关系形态示例
 

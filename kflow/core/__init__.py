@@ -20,6 +20,11 @@ from kflow.core.versioning import (
     fingerprint_files,
 )
 from kflow.core.scan import ScanIssue, ScanResult, confirm, scan, validate
+from kflow.core.schema_versions import (
+    METADATA_SCHEMA_VERSION,
+    PROJECT_GRAPH_SCHEMA_VERSION,
+    TASK_QUERY_SCHEMA_VERSION,
+)
 from kflow.core.status import NodeStatus, evaluate_statuses
 from kflow.core.storage import (
     SCHEMA_VERSION,
@@ -56,14 +61,17 @@ __all__ = [
     "KnowledgeGraph",
     "KnowledgeNode",
     "ImpactResult",
+    "METADATA_SCHEMA_VERSION",
     "NodeConfirmation",
     "NodeStatus",
     "ProjectGraphResult",
+    "PROJECT_GRAPH_SCHEMA_VERSION",
     "ReviewOrderResult",
     "SCHEMA_VERSION",
     "ScanIssue",
     "ScanResult",
     "StorageError",
+    "TASK_QUERY_SCHEMA_VERSION",
     "ValidationIssue",
     "build_confirmation",
     "compute_effective_versions",

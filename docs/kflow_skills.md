@@ -10,25 +10,27 @@ KFlow 是重要项目文件之间知识拓扑与影响范围的外部记忆。�
 
 项目存在 `.kflow/project.json` 且任务涉及受管知识时使用 KFlow。未启用时，不自动初始化或猜测关系。
 
-根据缺失信息选择一个查询：
+Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 
-- 陌生项目或跨多个知识区域：`kflow overview --json`；
-- 需要完整图的当前状态：`kflow overview --status --json`；
-- 开始处理当前变化：`kflow review-order [NODE] --json`；
-- 处理具体 Node 前：`kflow context NODE --json`；
-- 需要结构性下游范围：`kflow impact NODE --json`；
-- 实际检查完成：`kflow confirm NODE --json`；
-- 结束前：`kflow review-order --json` 与 `kflow validate --json`。
+- 陌生项目或跨多个知识区域：`kflow overview`；
+- 需要完整图的当前状态：`kflow overview --status`；
+- 开始处理当前变化：`kflow review-order [NODE]`；
+- 处理具体 Node 前：`kflow context NODE`；
+- 需要结构性下游范围：`kflow impact NODE`；
+- 实际检查完成：`kflow confirm NODE`；
+- 结束前：`kflow review-order` 与 `kflow validate`。
 
 不需要机械地依次调用所有查询命令。
 
 ## 结果解释
 
-`context` 只是一跳局部关系。producer 与 consumer Derivation 都保留全部 inputs、outputs 和角色 short；直接相关 Node 的状态在 `nodes` 中。
+`overview` 从 `KFlow project:` 开始；`--status` 在项目有效时补充 `Need review:`。每个 Derivation 都完整展示全部 inputs 和 outputs。
 
-`impact` 的 `direct_derivations` 是目标直接作为 input 的完整活动。`further_downstream` 已排除目标和 direct outputs，并按稳定拓扑序去重。
+`context` 只是一跳局部关系。读取 `Files:`、`Produced by:` 与 `Used by:`；producer 与 consumer Derivation 都保留全部角色。
 
-`review-order` 只包含 reasons 非空的 Node。无 NODE 时范围是全项目；有 NODE 时范围是目标及可达下游。指定目标如果 current，不会因此被强制加入。
+`impact` 从 `Impact from:` 开始。`Direct derivations` 展示目标直接参与的完整活动，`Further downstream, in topological order` 已排除目标和直接输出并去重。
+
+`review-order` 的 `Review order` 编号清单只包含仍需检查的 Node。无 NODE 时范围是全项目；有 NODE 时范围是目标及可达下游。指定目标如果当前有效，不会因此被强制加入。
 
 规范 reasons：`unconfirmed`、`files_changed`、`derivation_changed`、`input_changed`。它们表示需要检查的条件，不表示内容一定错误。
 
@@ -45,7 +47,7 @@ KFlow 是重要项目文件之间知识拓扑与影响范围的外部记忆。�
 - 未阅读目标文件就确认；
 - 级联确认下游或 sibling output；
 - 把 `affected` 当成必然错误；
-- 解析默认文本作为机器协议；
+- 把默认文本当作稳定机器协议；
 - 自动登记未受管文件；
 - 要求 KFlow 返回正文、摘要、片段或 Prompt；
 - 用固定关系类型、向量相似度或自动推断替代显式 Derivation。

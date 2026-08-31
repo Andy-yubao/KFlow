@@ -1,7 +1,29 @@
-from kflow.core.query import QUERY_SCHEMA_VERSION
-from kflow.core.storage import SCHEMA_VERSION
+import ast
+from pathlib import Path
+
+from kflow.core.schema_versions import (
+    METADATA_SCHEMA_VERSION,
+    PROJECT_GRAPH_SCHEMA_VERSION,
+    TASK_QUERY_SCHEMA_VERSION,
+)
 
 
-def test_query_schema_bump_does_not_change_git_metadata_schema() -> None:
-    assert QUERY_SCHEMA_VERSION == 3
-    assert SCHEMA_VERSION == 2
+def test_protocol_versions_are_explicit_independent_constants() -> None:
+    assert METADATA_SCHEMA_VERSION == 2
+    assert PROJECT_GRAPH_SCHEMA_VERSION == 2
+    assert TASK_QUERY_SCHEMA_VERSION == 3
+
+    source = Path("kflow/core/schema_versions.py").read_text(encoding="utf-8")
+    assignments = {
+        node.targets[0].id: node.value
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+    }
+    for name in (
+        "METADATA_SCHEMA_VERSION",
+        "PROJECT_GRAPH_SCHEMA_VERSION",
+        "TASK_QUERY_SCHEMA_VERSION",
+    ):
+        assert isinstance(assignments[name], ast.Constant)

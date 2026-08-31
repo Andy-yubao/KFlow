@@ -19,10 +19,12 @@ from kflow.core.models import (
     KnowledgeNode,
     NodeConfirmation,
 )
+from kflow.core.schema_versions import METADATA_SCHEMA_VERSION
 
 
 KFLOW_DIR = ".kflow"
-SCHEMA_VERSION = 2
+# Compatibility name for callers that imported the original metadata constant.
+SCHEMA_VERSION = METADATA_SCHEMA_VERSION
 
 
 class StorageError(ValueError):
@@ -41,7 +43,7 @@ def initialize_project(root: Path) -> None:
         (metadata / name).mkdir()
     _write_json(
         metadata / "project.json",
-        {"kind": "kflow-project", "schema_version": SCHEMA_VERSION},
+        {"kind": "kflow-project", "schema_version": METADATA_SCHEMA_VERSION},
     )
     (metadata / ".gitignore").write_text("/runtime/\n", encoding="utf-8", newline="\n")
 
@@ -149,7 +151,7 @@ def _read_json(path: Path) -> dict:
 def _expect_header(value: dict, kind: str) -> None:
     if value.get("kind") != kind:
         raise StorageError(f"expected kind {kind!r}, got {value.get('kind')!r}")
-    if value.get("schema_version") != SCHEMA_VERSION:
+    if value.get("schema_version") != METADATA_SCHEMA_VERSION:
         raise StorageError(
             f"unsupported schema version: {value.get('schema_version')!r}"
         )
@@ -158,7 +160,7 @@ def _expect_header(value: dict, kind: str) -> None:
 def _encode_node(node: KnowledgeNode) -> dict:
     return {
         "kind": "node",
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": METADATA_SCHEMA_VERSION,
         "id": node.id,
         "name": node.name,
         "files": sorted(node.files),
@@ -178,7 +180,7 @@ def _decode_node(value: dict, expected_id: str) -> KnowledgeNode:
 def _encode_derivation(derivation: Derivation) -> dict:
     return {
         "kind": "derivation",
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": METADATA_SCHEMA_VERSION,
         "id": derivation.id,
         "short": derivation.short,
         "detail": derivation.detail,
@@ -228,7 +230,7 @@ def _encode_confirmation(confirmation: NodeConfirmation) -> dict:
     producer = confirmation.producing_derivation
     return {
         "kind": "confirmation",
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": METADATA_SCHEMA_VERSION,
         "node": confirmation.node,
         "files": [
             {"path": item.path, "fingerprint": _encode_fingerprint(item.fingerprint)}

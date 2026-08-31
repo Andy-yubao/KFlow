@@ -207,7 +207,7 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 查询可以按 Node ID、name 或已登记文件路径定位，操作目标仍是 Node。查询路径可将开头单个 `./` 和 Windows `\` 分隔符规范化为仓库相对 POSIX 路径；绝对路径、drive path 和包含 `..` 的路径不会匹配。未登记文件返回 `unknown_node` 查询错误，但不构成图校验错误，也不触发自动登记。
 
-`query_project_graph` 是 Human Interface 与 Agent Interface 的共同基础。它直接复用 scan 状态、图拓扑和统一 Derivation presenter；Derivation 作为完整多输入、多输出实体返回。展示层不得把投影邻接边误作规范 Derivation 事实，也不得加入坐标、颜色、折叠或选择状态等 UI 私有数据。
+`query_project_graph` 是 Human Interface 与 Agent Interface 的共同基础。它直接复用 scan 状态、图拓扑和统一 Derivation presenter；Derivation 作为完整多输入、多输出实体返回。Project Graph v2 的 Node 按拓扑序、Derivation 按 Derivation ID、角色按 Node ID 排序；CLI 默认文本可在展示层投影为拓扑阅读顺序，但不得改变机器协议。展示层不得把投影邻接边误作规范 Derivation 事实，也不得加入坐标、颜色、折叠或选择状态等 UI 私有数据。
 
 ## 8. 持久化
 

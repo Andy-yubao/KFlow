@@ -1,0 +1,12 @@
+"""Independent version constants for KFlow's public protocols."""
+
+METADATA_SCHEMA_VERSION = 2
+PROJECT_GRAPH_SCHEMA_VERSION = 2
+TASK_QUERY_SCHEMA_VERSION = 3
+
+
+__all__ = [
+    "METADATA_SCHEMA_VERSION",
+    "PROJECT_GRAPH_SCHEMA_VERSION",
+    "TASK_QUERY_SCHEMA_VERSION",
+]

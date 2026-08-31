@@ -1,6 +1,8 @@
-# KFlow Agent 集成
+# KFlow Agent 程序化集成
 
-KFlow 为 Agent 提供两层稳定入口：Python Core Query 与 CLI `--json`。两者都只返回结构事实、登记路径、状态和 issues，不返回文件正文。
+本文描述供 MCP、IDE、脚本和其他机器消费者使用的程序化适配层，不是 Agent 的直接终端工作流。直接操作终端的 Agent 应阅读默认文本并遵循 [Agent 工作流](agent-workflow.md)。
+
+程序化适配层有两类稳定入口：Python Core Query 与 CLI `--json`。两者都只返回结构事实、登记路径、状态和 issues，不返回文件正文。
 
 ## 公共 Query
 

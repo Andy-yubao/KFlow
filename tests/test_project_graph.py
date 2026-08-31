@@ -125,6 +125,57 @@ def test_project_graph_preserves_all_facts_statuses_and_deterministic_order(tmp_
     assert "PRIVATE CONTENT" not in json.dumps(result, ensure_ascii=False)
 
 
+def test_project_graph_v2_keeps_machine_order_independent_from_topology(tmp_path):
+    nodes = (
+        KnowledgeNode("nd_z_source", "source", ("docs/source.md",)),
+        KnowledgeNode("nd_m_peer", "peer", ("docs/peer.md",)),
+        KnowledgeNode("nd_a_later", "later", ("docs/later.md",)),
+        KnowledgeNode("nd_b_final", "final", ("docs/final.md",)),
+    )
+    derivations = (
+        Derivation(
+            "dv_z_first",
+            "First in topology",
+            "",
+            (DerivationInput("nd_z_source", "source role", ""),),
+            (DerivationOutput("nd_a_later", "later role", ""),),
+        ),
+        Derivation(
+            "dv_a_second",
+            "Second in topology",
+            "",
+            (
+                DerivationInput("nd_m_peer", "peer role", ""),
+                DerivationInput("nd_a_later", "later role", ""),
+            ),
+            (DerivationOutput("nd_b_final", "final role", ""),),
+        ),
+    )
+    for node in nodes:
+        path = tmp_path / node.files[0]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(node.name, encoding="utf-8")
+    initialize_project(tmp_path)
+    save_graph(tmp_path, KnowledgeGraph.build(nodes, derivations))
+
+    result = query_project_graph(tmp_path)
+
+    assert result["topological_order"] == [
+        "nd_m_peer",
+        "nd_z_source",
+        "nd_a_later",
+        "nd_b_final",
+    ]
+    assert [item["id"] for item in result["derivations"]] == [
+        "dv_a_second",
+        "dv_z_first",
+    ]
+    assert [item["node"] for item in result["derivations"][0]["inputs"]] == [
+        "nd_a_later",
+        "nd_m_peer",
+    ]
+
+
 def test_project_graph_reports_scan_issues_without_losing_graph_facts(tmp_path):
     prepare_many_to_many_project(tmp_path)
     (tmp_path / "docs/c.md").unlink()

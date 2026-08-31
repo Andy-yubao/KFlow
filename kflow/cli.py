@@ -8,13 +8,13 @@ from pathlib import Path
 from kflow.core.graph import GraphValidationError
 from kflow.core.operations import add_derivation, add_node
 from kflow.core.query import (
-    QUERY_SCHEMA_VERSION,
     present_derivation,
     query_context,
     query_impact,
     query_project_graph,
     query_review_order,
 )
+from kflow.core.schema_versions import TASK_QUERY_SCHEMA_VERSION
 from kflow.core.scan import confirm
 from kflow.core.scan import validate as validate_project
 from kflow.core.storage import StorageError, initialize_project, load_graph
@@ -30,7 +30,7 @@ class KFlowArgumentParser(argparse.ArgumentParser):
         if self.json_error_mode:
             result = {
                 "ok": False,
-                "schema_version": QUERY_SCHEMA_VERSION,
+                "schema_version": TASK_QUERY_SCHEMA_VERSION,
                 "issues": [
                     {
                         "code": "invalid_argument",
@@ -266,12 +266,16 @@ def dispatch(args) -> dict:
     if args.command == "init":
         root = Path(args.path).resolve()
         initialize_project(root)
-        return {"ok": True, "schema_version": QUERY_SCHEMA_VERSION, "root": str(root)}
+        return {
+            "ok": True,
+            "schema_version": TASK_QUERY_SCHEMA_VERSION,
+            "root": str(root),
+        }
     if args.command == "add-node":
         node = add_node(root, args.name, tuple(args.files))
         return {
             "ok": True,
-            "schema_version": QUERY_SCHEMA_VERSION,
+            "schema_version": TASK_QUERY_SCHEMA_VERSION,
             "node": {"id": node.id, "name": node.name, "files": list(node.files)},
         }
     if args.command == "derive":
@@ -284,7 +288,7 @@ def dispatch(args) -> dict:
         )
         return {
             "ok": True,
-            "schema_version": QUERY_SCHEMA_VERSION,
+            "schema_version": TASK_QUERY_SCHEMA_VERSION,
             "derivation": present_derivation(load_graph(root), derivation),
         }
     if args.command == "overview":
@@ -302,7 +306,7 @@ def dispatch(args) -> dict:
         remaining = query_review_order(root)
         return {
             "ok": True,
-            "schema_version": QUERY_SCHEMA_VERSION,
+            "schema_version": TASK_QUERY_SCHEMA_VERSION,
             "node": {"id": node.id, "name": node.name, "files": list(node.files)},
             "before": {"status": before.status, "reasons": list(before.reasons)},
             "after": {"status": after.status, "reasons": list(after.reasons)},
@@ -313,7 +317,7 @@ def dispatch(args) -> dict:
         issues = validate_project(root)
         return {
             "ok": not issues,
-            "schema_version": QUERY_SCHEMA_VERSION,
+            "schema_version": TASK_QUERY_SCHEMA_VERSION,
             "issues": [
                 {
                     "code": issue.code,
@@ -365,7 +369,11 @@ def _error_envelope(error: Exception, references: list[str]) -> dict:
                 "references": references,
             }
         ]
-    return {"ok": False, "schema_version": QUERY_SCHEMA_VERSION, "issues": issues}
+    return {
+        "ok": False,
+        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "issues": issues,
+    }
 
 
 def _print_result(result: dict, json_output: bool, args) -> None:
@@ -376,7 +384,7 @@ def _print_result(result: dict, json_output: bool, args) -> None:
     if command == "validate":
         _print_validation(result)
         return
-    if command == "overview" and result.get("nodes"):
+    if command == "overview" and _can_render_overview(result):
         _print_overview(result, include_status=args.status)
         return
     if not result.get("ok", True):
@@ -413,34 +421,74 @@ def _print_overview(result: dict, *, include_status: bool) -> None:
         f"{project['derivation_count']} derivations"
     )
     if include_status:
-        print(f"Need review: {project['needs_review_count']} nodes")
-    if not result["nodes"]:
+        if project["status"] == "invalid":
+            print("Project status: invalid")
+            print("Review status unavailable until validation issues are resolved.")
+        else:
+            print(f"Need review: {project['needs_review_count']} nodes")
+
+    if result["nodes"]:
+        nodes = {node["id"]: node for node in result["nodes"]}
+        derivations = _overview_derivations(result)
+        for derivation in derivations:
+            print()
+            _print_derivation(
+                derivation,
+                descriptor="files",
+                nodes=nodes,
+                include_status=include_status,
+            )
+
+        related = {
+            role["node"]
+            for derivation in derivations
+            for role in (*derivation["inputs"], *derivation["outputs"])
+        }
+        standalone = [node for node in result["nodes"] if node["id"] not in related]
+        if standalone:
+            print("\nStandalone nodes\n")
+            for node in standalone:
+                print(_format_node(node, ", ".join(node["files"]), include_status))
+    else:
         print("\nNo knowledge nodes registered.")
-        return
 
-    nodes = {node["id"]: node for node in result["nodes"]}
-    for derivation in result["derivations"]:
-        print()
-        _print_derivation(
-            derivation,
-            descriptor="files",
-            nodes=nodes,
-            include_status=include_status,
-        )
-
-    related = {
-        role["node"]
-        for derivation in result["derivations"]
-        for role in (*derivation["inputs"], *derivation["outputs"])
-    }
-    standalone = [node for node in result["nodes"] if node["id"] not in related]
-    if standalone:
-        print("\nStandalone nodes\n")
-        for node in standalone:
-            print(_format_node(node, ", ".join(node["files"]), include_status))
     if result["issues"]:
         print("\nValidation issues\n")
         _print_issues(result["issues"])
+
+
+def _can_render_overview(result: dict) -> bool:
+    if result.get("nodes") or result.get("ok", True):
+        return True
+    return any(
+        issue.get("code") != "invalid_project" for issue in result.get("issues", [])
+    )
+
+
+def _overview_derivations(result: dict) -> list[dict]:
+    """Project stable machine facts into topological human reading order."""
+    positions = {
+        node_id: position
+        for position, node_id in enumerate(result["topological_order"])
+    }
+
+    def role_key(role: dict) -> tuple[int, str]:
+        return positions[role["node"]], role["node"]
+
+    def derivation_key(derivation: dict) -> tuple[tuple[int, ...], str]:
+        output_positions = tuple(
+            sorted(positions[role["node"]] for role in derivation["outputs"])
+        )
+        return output_positions, derivation["id"]
+
+    return [
+        {
+            **derivation,
+            "inputs": sorted(derivation["inputs"], key=role_key),
+            "outputs": sorted(derivation["outputs"], key=role_key),
+        }
+        for derivation in sorted(result["derivations"], key=derivation_key)
+    ]
 
 
 def _print_context(result: dict) -> None:
@@ -595,6 +643,13 @@ def _reason_text(reasons: list[str]) -> str:
 def _print_issues(issues: list[dict], *, file=None) -> None:
     output = sys.stdout if file is None else file
     for issue in issues:
+        print(f"- {issue['code']}: {_format_issue(issue)}", file=output)
+
+
+def _format_issue(issue: dict) -> str:
+    """Keep graph diagnostics intact while abbreviating path-only file issues."""
+    if issue.get("code") in {"missing_file", "unreadable_file"}:
         references = issue.get("references", [])
-        detail = references[-1] if references else issue["message"]
-        print(f"- {issue['code']}: {detail}", file=output)
+        if references:
+            return references[-1]
+    return issue["message"]

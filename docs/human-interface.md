@@ -45,7 +45,7 @@ kflow ui
 → Project Graph 与 Review Order 完成后立即更新核心界面，不等待 Git History
 → Git History 独立校正历史基线，再请求对应 Graph Diff
 → GET /api/project 调用 query_project_graph(root)
-→ GET /api/review-order 调用 query_affected_context(root)
+→ GET /api/review-order 调用 query_review_order(root)
 → GET /api/git-history 只列当前 HEAD 可达且修改项目 .kflow/project.json、.kflow/nodes/ 或 .kflow/derivations/ 的近期结构提交
 → GET /api/graph-diff 对当前 root 调用 query_project_graph(root)，并从 HEAD 或指定 commit 临时快照再次调用 query_project_graph(snapshot_root)
 → 前端转换并布局 Knowledge Node 与 Derivation
@@ -67,7 +67,7 @@ GET /api/graph-diff
 POST /api/open-file
 ```
 
-`GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_affected_context(root)`，前端不重新计算影响范围或检查顺序。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
+`GET /api/health` 返回本地服务健康信息。`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
 
 `GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 或 `<project-relative-path>/.kflow/derivations/` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。仓库相对路径使用 literal Git pathspec，因此目录中的空格、中文和 pathspec 元字符不会扩大匹配范围。confirmation-only commit 和普通正文提交不进入列表。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
 

@@ -8,22 +8,16 @@ from pathlib import Path
 from kflow.core.graph import GraphValidationError
 from kflow.core.operations import add_derivation, add_node
 from kflow.core.query import (
+    QUERY_SCHEMA_VERSION,
     present_derivation,
-    query_affected_context,
     query_context,
     query_impact,
     query_project_graph,
+    query_review_order,
 )
 from kflow.core.scan import confirm
-from kflow.core.scan import scan as scan_project
-from kflow.core.scan import scan_and_sync
 from kflow.core.scan import validate as validate_project
-from kflow.core.storage import (
-    SCHEMA_VERSION,
-    StorageError,
-    initialize_project,
-    load_graph,
-)
+from kflow.core.storage import StorageError, initialize_project, load_graph
 from kflow.human.server import run_ui
 
 
@@ -36,7 +30,7 @@ class KFlowArgumentParser(argparse.ArgumentParser):
         if self.json_error_mode:
             result = {
                 "ok": False,
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": QUERY_SCHEMA_VERSION,
                 "issues": [
                     {
                         "code": "invalid_argument",
@@ -54,12 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = KFlowArgumentParser(
         prog="kflow",
         description=(
-            "Understand important project knowledge, what changed, and what to "
-            "review next."
+            "Understand important project knowledge, direct relationships, and "
+            "what to review next."
         ),
         epilog=(
-            "Typical workflow: kflow status -> kflow context --affected -> "
-            "review files -> kflow confirm NODE"
+            "Typical workflow: kflow overview -> kflow review-order -> "
+            "kflow context NODE -> review files -> kflow confirm NODE"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -102,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_derive = sub.add_parser(
         "derive",
         help="Connect existing Nodes with an explicit Derivation.",
-        description="Record one explainable, acyclic derivation between existing Nodes.",
+        description="Record one explainable, acyclic Derivation between existing Nodes.",
     )
     p_derive.add_argument(
         "--short", required=True, help="Short derivation explanation."
@@ -128,33 +122,41 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_overview = sub.add_parser(
         "overview",
-        help="Show the complete project graph and current state.",
-        description=(
-            "Show every Node and complete Derivation in stable topological order. "
-            "This operation is read-only."
-        ),
+        help="Show the complete project knowledge topology.",
+        description="Show every complete Derivation in stable topological order.",
+    )
+    p_overview.add_argument(
+        "--status", action="store_true", help="Mark Nodes that currently need review."
     )
     _add_json_option(p_overview)
 
-    p_status = sub.add_parser(
-        "status",
-        help="Show project health and Nodes needing attention.",
-        description=(
-            "Explain the current project state, what needs review, and why. "
-            "This operation is read-only."
-        ),
+    p_context = sub.add_parser(
+        "context",
+        help="Show one Node's direct local relationships.",
+        description="Show the target, its producer, and its direct consumer Derivations.",
     )
-    _add_json_option(p_status)
+    p_context.add_argument("node", help="Node ID, name, or registered file path.")
+    _add_json_option(p_context)
 
-    p_scan = sub.add_parser(
-        "scan",
-        help="Observe managed file changes and current Node status.",
-        description=(
-            "Compare managed files with the last observation and refresh only the "
-            "rebuildable local scan cache."
-        ),
+    p_impact = sub.add_parser(
+        "impact",
+        help="Show direct Derivations and further downstream Nodes.",
+        description="Start from one explicit Node and inspect its structural downstream.",
     )
-    _add_json_option(p_scan)
+    p_impact.add_argument("node", help="Node ID, name, or registered file path.")
+    _add_json_option(p_impact)
+
+    p_review = sub.add_parser(
+        "review-order",
+        help="Show the current stable review order.",
+        description="List only Nodes that still need review, with upstream first.",
+    )
+    p_review.add_argument(
+        "node",
+        nargs="?",
+        help="Optional Node limiting the scope to its downstream subgraph.",
+    )
+    _add_json_option(p_review)
 
     p_confirm = sub.add_parser(
         "confirm",
@@ -174,39 +176,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_option(p_validate)
 
-    p_context = sub.add_parser(
-        "context",
-        help="Show why a Node or current review scope matters.",
-        description=(
-            "Show registered paths, relationships, impact, and review order without "
-            "returning file contents."
-        ),
-    )
-    p_context.add_argument(
-        "node", nargs="?", help="Node ID, name, or registered file path."
-    )
-    p_context.add_argument(
-        "--affected",
-        action="store_true",
-        help="Show the current affected scope and recommended review order.",
-    )
-    _add_json_option(p_context)
-
-    p_explain = sub.add_parser(
-        "explain",
-        help="Explain a Node's downstream impact.",
-        description="Trace direct and indirect impact from one explicit change root.",
-    )
-    p_explain.add_argument("node", help="Node ID, name, or registered file path.")
-    _add_json_option(p_explain)
-
-    p_review = sub.add_parser(
-        "review-order",
-        help="Show the recommended review order for current changes.",
-        description="List affected Nodes in a stable, upstream-first order.",
-    )
-    _add_json_option(p_review)
-
     p_ui = sub.add_parser(
         "ui",
         help="Open the local read-only Human Interface.",
@@ -222,12 +191,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Loopback port (default: choose a random available port).",
     )
     p_ui.add_argument(
-        "--no-open",
-        action="store_true",
-        help="Do not open the browser automatically.",
+        "--no-open", action="store_true", help="Do not open the browser automatically."
     )
     _add_json_option(p_ui)
-
     return parser
 
 
@@ -258,10 +224,8 @@ def main(argv=None) -> None:
     if not args.command:
         parser.print_help()
         raise SystemExit(1)
-
     if args.command == "ui" and getattr(args, "json", False):
         parser.error("ui does not support --json")
-
     if args.command == "ui":
         try:
             run_ui(Path.cwd(), port=args.port, open_browser=not args.no_open)
@@ -282,7 +246,7 @@ def main(argv=None) -> None:
             print(f"KFlow could not complete the command: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 
-    _print_result(result, getattr(args, "json", False), args.command)
+    _print_result(result, getattr(args, "json", False), args)
     if not result.get("ok", True):
         raise SystemExit(2)
 
@@ -302,19 +266,15 @@ def dispatch(args) -> dict:
     if args.command == "init":
         root = Path(args.path).resolve()
         initialize_project(root)
-        result = {"ok": True, "schema_version": 2, "root": str(root)}
-    elif args.command == "add-node":
+        return {"ok": True, "schema_version": QUERY_SCHEMA_VERSION, "root": str(root)}
+    if args.command == "add-node":
         node = add_node(root, args.name, tuple(args.files))
-        result = {
+        return {
             "ok": True,
-            "schema_version": 2,
-            "node": {
-                "id": node.id,
-                "name": node.name,
-                "files": list(node.files),
-            },
+            "schema_version": QUERY_SCHEMA_VERSION,
+            "node": {"id": node.id, "name": node.name, "files": list(node.files)},
         }
-    elif args.command == "derive":
+    if args.command == "derive":
         derivation = add_derivation(
             root,
             args.short,
@@ -322,35 +282,38 @@ def dispatch(args) -> dict:
             tuple((node, short, "") for node, short in args.input),
             tuple((node, short, "") for node, short in args.output),
         )
-        result = {
+        return {
             "ok": True,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": QUERY_SCHEMA_VERSION,
             "derivation": present_derivation(load_graph(root), derivation),
         }
-    elif args.command == "overview":
-        result = query_project_graph(root)
-    elif args.command == "status":
-        result = _status_result(root)
-    elif args.command == "scan":
-        result = _scan_result(root)
-    elif args.command == "confirm":
+    if args.command == "overview":
+        return query_project_graph(root)
+    if args.command == "context":
+        return query_context(root, args.node)
+    if args.command == "impact":
+        return query_impact(root, args.node)
+    if args.command == "review-order":
+        return query_review_order(root, args.node)
+    if args.command == "confirm":
         before, after = confirm(root, args.node)
-        current = _status_result(root)
-        result = {
+        graph = load_graph(root)
+        node = graph.nodes[after.node]
+        remaining = query_review_order(root)
+        return {
             "ok": True,
-            "schema_version": 2,
-            "node": after.node,
+            "schema_version": QUERY_SCHEMA_VERSION,
+            "node": {"id": node.id, "name": node.name, "files": list(node.files)},
             "before": {"status": before.status, "reasons": list(before.reasons)},
             "after": {"status": after.status, "reasons": list(after.reasons)},
-            "remaining_review": [
-                item["id"] for item in current["nodes"] if item["reasons"]
-            ],
+            "next": remaining["nodes"][0] if remaining["nodes"] else None,
+            "issues": remaining["issues"],
         }
-    elif args.command == "validate":
+    if args.command == "validate":
         issues = validate_project(root)
-        result = {
+        return {
             "ok": not issues,
-            "schema_version": 2,
+            "schema_version": QUERY_SCHEMA_VERSION,
             "issues": [
                 {
                     "code": issue.code,
@@ -360,22 +323,7 @@ def dispatch(args) -> dict:
                 for issue in issues
             ],
         }
-    elif args.command == "context":
-        if args.affected and args.node is not None:
-            raise ValueError("context accepts either NODE or --affected, not both")
-        if args.affected:
-            result = query_affected_context(root)
-        elif args.node is not None:
-            result = query_context(root, args.node)
-        else:
-            raise ValueError("context requires NODE or --affected")
-    elif args.command == "explain":
-        result = query_impact(root, args.node)
-    elif args.command == "review-order":
-        result = query_impact(root)
-    else:
-        raise ValueError(f"unknown command: {args.command}")
-    return result
+    raise ValueError(f"unknown command: {args.command}")
 
 
 def _command_references(args) -> list[str]:
@@ -417,338 +365,236 @@ def _error_envelope(error: Exception, references: list[str]) -> dict:
                 "references": references,
             }
         ]
-    return {"ok": False, "schema_version": SCHEMA_VERSION, "issues": issues}
+    return {"ok": False, "schema_version": QUERY_SCHEMA_VERSION, "issues": issues}
 
 
-def _status_result(root: Path) -> dict:
-    return _status_from_scan(scan_project(root))
-
-
-def _status_from_scan(scanned) -> dict:
-    nodes = []
-    for node_id in scanned.graph.topological_order():
-        node = scanned.graph.nodes[node_id]
-        status = scanned.statuses.get(node_id)
-        nodes.append(
-            {
-                "id": node.id,
-                "name": node.name,
-                "files": list(node.files),
-                "status": None if status is None else status.status,
-                "reasons": [] if status is None else list(status.reasons),
-                "changed_files": [] if status is None else list(status.changed_files),
-            }
-        )
-    return {
-        "ok": not scanned.issues,
-        "schema_version": 2,
-        "nodes": nodes,
-        "issues": [
-            {
-                "code": issue.code,
-                "message": issue.message,
-                "references": list(issue.references),
-            }
-            for issue in scanned.issues
-        ],
-    }
-
-
-def _scan_result(root: Path) -> dict:
-    summary = scan_and_sync(root)
-    status = _status_from_scan(summary.scanned)
-    return {
-        **status,
-        "changes": {
-            "added": list(summary.added_files),
-            "modified": list(summary.modified_files),
-            "deleted": list(summary.deleted_files),
-        },
-        "fingerprints": [
-            {
-                "path": path,
-                "fingerprint": {
-                    "algorithm": fingerprint.algorithm,
-                    "value": fingerprint.value,
-                },
-            }
-            for path, fingerprint in sorted(summary.scanned.file_fingerprints.items())
-        ],
-    }
-
-
-def _print_result(result: dict, json_output: bool, command: str) -> None:
+def _print_result(result: dict, json_output: bool, args) -> None:
     if json_output:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return
+    command = args.command
+    if command == "validate":
+        _print_validation(result)
+        return
+    if command == "overview" and result.get("nodes"):
+        _print_overview(result, include_status=args.status)
         return
     if not result.get("ok", True):
         print("KFlow could not complete the command:", file=sys.stderr)
         _print_issues(result.get("issues", []), file=sys.stderr)
         return
-    printers = {
-        "overview": _print_overview,
-        "status": _print_status,
-        "scan": _print_scan,
-        "context": _print_context,
-        "explain": _print_explanation,
-        "review-order": _print_review_order,
-        "validate": _print_validation,
-    }
-    if command in printers:
-        printers[command](result)
+    if command == "overview":
+        _print_overview(result, include_status=args.status)
+    elif command == "context":
+        _print_context(result)
+    elif command == "impact":
+        _print_impact(result)
+    elif command == "review-order":
+        _print_review_order(result)
     elif command == "init":
         print(f"Initialized KFlow at {result['root']}")
     elif command == "add-node":
         node = result["node"]
-        print(f"Registered Node {node['name']} ({node['id']})")
+        print(f"Registered Node: {node['name']}")
         for path in node["files"]:
             print(f"- {path}")
     elif command == "derive":
         derivation = result["derivation"]
-        print(f"Created Derivation {derivation['short']} ({derivation['id']})")
-        print("Inputs:")
-        _print_derivation_roles(derivation["inputs"])
-        print("Outputs:")
-        _print_derivation_roles(derivation["outputs"])
+        print(f"Created Derivation: {derivation['short']}")
+        _print_derivation(derivation, descriptor="short")
     elif command == "confirm":
-        print(f"Confirmed Node {result['node']}")
-        print(f"Remaining Nodes needing review: {len(result['remaining_review'])}")
+        _print_confirmation(result)
 
 
-def _print_status(result: dict) -> None:
-    nodes = result["nodes"]
-    issues = result["issues"]
-    needs_review = [node for node in nodes if node["reasons"]]
-    current = len(nodes) - len(needs_review)
-    state = (
-        "blocked by validation issues"
-        if issues
-        else "attention required"
-        if needs_review
-        else "current"
-    )
-
-    print("KFlow project status")
-    print(f"State: {state}")
+def _print_overview(result: dict, *, include_status: bool) -> None:
+    project = result["project"]
     print(
-        f"Summary: {len(nodes)} Nodes; {current} current; "
-        f"{len(needs_review)} need review; {len(issues)} issues"
+        f"KFlow project: {project['node_count']} nodes, "
+        f"{project['derivation_count']} derivations"
     )
-    print("\nNeeds attention:")
-    if not needs_review:
-        print("none")
-    for node in needs_review:
-        reasons = ", ".join(node["reasons"])
-        print(f"- {node['name']} [{reasons}]")
-        print(f"  Why: {_explain_reasons(node['reasons'])}")
-        relevant_files = node["changed_files"] or node["files"]
-        print(f"  Files: {', '.join(relevant_files)}")
+    if include_status:
+        print(f"Need review: {project['needs_review_count']} nodes")
+    if not result["nodes"]:
+        print("\nNo knowledge nodes registered.")
+        return
 
-    print("\nValidation issues:")
-    _print_issues(issues)
-    if needs_review and not issues:
-        print("\nNext: run 'kflow context --affected' for impact and review order.")
+    nodes = {node["id"]: node for node in result["nodes"]}
+    for derivation in result["derivations"]:
+        print()
+        _print_derivation(
+            derivation,
+            descriptor="files",
+            nodes=nodes,
+            include_status=include_status,
+        )
 
-
-def _explain_reasons(reasons: list[str]) -> str:
-    descriptions = {
-        "unconfirmed": "no review baseline has been recorded",
-        "files_changed": "registered files changed since the last confirmation",
-        "derivation_changed": "the producing Derivation changed",
-        "input_changed": "one or more direct input Nodes changed",
+    related = {
+        role["node"]
+        for derivation in result["derivations"]
+        for role in (*derivation["inputs"], *derivation["outputs"])
     }
-    return "; ".join(descriptions.get(reason, reason) for reason in reasons)
+    standalone = [node for node in result["nodes"] if node["id"] not in related]
+    if standalone:
+        print("\nStandalone nodes\n")
+        for node in standalone:
+            print(_format_node(node, ", ".join(node["files"]), include_status))
+    if result["issues"]:
+        print("\nValidation issues\n")
+        _print_issues(result["issues"])
+
+
+def _print_context(result: dict) -> None:
+    node = result["node"]
+    assert node is not None
+    print(_format_node(node, None, True))
+    print("\nFiles:")
+    for path in node["files"]:
+        print(f"- {path}")
+    print("\nProduced by:")
+    producer = result["producing_derivation"]
+    if producer is None:
+        print("source node")
+    else:
+        print()
+        _print_derivation(
+            producer, descriptor="short", nodes=_node_map(result), include_status=True
+        )
+    print("\nUsed by:")
+    consumers = result["consumer_derivations"]
+    if not consumers:
+        print("no direct derivations")
+    for derivation in consumers:
+        print()
+        _print_derivation(
+            derivation, descriptor="short", nodes=_node_map(result), include_status=True
+        )
+
+
+def _print_impact(result: dict) -> None:
+    node = result["node"]
+    assert node is not None
+    print(f"Impact from: {node['name']}")
+    derivations = result["direct_derivations"]
+    if not derivations:
+        print(f"\nNo downstream derivations from {node['name']}.")
+        return
+    print("\nDirect derivations")
+    for derivation in derivations:
+        print()
+        _print_derivation(
+            derivation,
+            descriptor="short",
+            selected_id=node["id"],
+        )
+    further = result["further_downstream"]
+    if not further:
+        print("\nFurther downstream: none")
+        return
+    print("\nFurther downstream, in topological order\n")
+    for position, downstream in enumerate(further, start=1):
+        print(f"{position}. {downstream['name']}")
+
+
+def _print_review_order(result: dict) -> None:
+    scope = result["scope"]
+    if not result["nodes"]:
+        if scope is None:
+            print("Review scope is clear.")
+        else:
+            print(f"No nodes need review from {scope['name']}.")
+        return
+    if scope is None:
+        print("Review order")
+    else:
+        print(f"Review order from: {scope['name']}")
+    for position, node in enumerate(result["nodes"], start=1):
+        print(f"\n{position}. {node['name']} — {_reason_text(node['reasons'])}")
+        for path in node["files"]:
+            print(f"   {path}")
+
+
+def _print_confirmation(result: dict) -> None:
+    print(f"Confirmed: {result['node']['name']}")
+    next_node = result["next"]
+    if next_node is None:
+        print("Current review scope is clear.")
+    else:
+        print(f"Next: {next_node['name']} — {_reason_text(next_node['reasons'])}")
 
 
 def _print_validation(result: dict) -> None:
     if result["ok"]:
         print("KFlow metadata is valid.")
         return
-    print("KFlow metadata has validation issues:")
+    print("KFlow metadata is invalid.\n")
     _print_issues(result["issues"])
+
+
+def _print_derivation(
+    derivation: dict,
+    *,
+    descriptor: str,
+    nodes: dict[str, dict] | None = None,
+    include_status: bool = False,
+    selected_id: str | None = None,
+) -> None:
+    nodes = {} if nodes is None else nodes
+    inputs = derivation["inputs"]
+    outputs = derivation["outputs"]
+    input_labels = [
+        _format_role(role, descriptor, nodes, include_status, selected_id)
+        for role in inputs
+    ]
+    for label in input_labels:
+        print(label)
+    print(f"  └─ {derivation['short']}")
+    output_labels = [
+        _format_role(role, descriptor, nodes, include_status, selected_id)
+        for role in outputs
+    ]
+    if len(output_labels) == 1:
+        print(f"     → {output_labels[0]}")
+    else:
+        for index, label in enumerate(output_labels):
+            connector = "└─→" if index == len(output_labels) - 1 else "├─→"
+            print(f"     {connector} {label}")
+
+
+def _format_role(
+    role: dict,
+    descriptor: str,
+    nodes: dict[str, dict],
+    include_status: bool,
+    selected_id: str | None,
+) -> str:
+    node = nodes.get(role["node"], {"name": role["name"], "reasons": []})
+    value = ", ".join(node.get("files", [])) if descriptor == "files" else role["short"]
+    label = _format_node(node, value, include_status)
+    if role["node"] == selected_id:
+        label += " [selected]"
+    return label
+
+
+def _format_node(node: dict, descriptor: str | None, include_status: bool) -> str:
+    label = node["name"]
+    if include_status and node.get("reasons"):
+        label += f" [{_reason_text(node['reasons'])}]"
+    if descriptor:
+        label += f" — {descriptor}"
+    return label
+
+
+def _node_map(result: dict) -> dict[str, dict]:
+    return {node["id"]: node for node in result["nodes"]}
+
+
+def _reason_text(reasons: list[str]) -> str:
+    return ", ".join(reason.replace("_", " ") for reason in reasons)
 
 
 def _print_issues(issues: list[dict], *, file=None) -> None:
     output = sys.stdout if file is None else file
-    if not issues:
-        print("none", file=output)
     for issue in issues:
-        references = ", ".join(issue.get("references", []))
-        suffix = f" ({references})" if references else ""
-        print(f"- {issue['code']}: {issue['message']}{suffix}", file=output)
-
-
-def _print_overview(result: dict) -> None:
-    project = result["project"]
-    print("KFlow project overview")
-    print(f"Project state: {project['status'].replace('_', ' ')}")
-    print(
-        "Summary: "
-        f"{project['node_count']} Nodes; "
-        f"{project['derivation_count']} Derivations; "
-        f"{project['needs_review_count']} need review; "
-        f"{project['issue_count']} issues"
-    )
-    print("\nNodes in topological order:")
-    if not result["nodes"]:
-        print("none")
-    for node in result["nodes"]:
-        reasons = ", ".join(node["reasons"]) or "none"
-        print(f"- {node['name']} ({node['id']}) [{node['status']}]")
-        print(f"  Reasons: {reasons}")
-        print(f"  Files: {', '.join(node['files'])}")
-
-    print("\nDerivations:")
-    if not result["derivations"]:
-        print("none")
-    for derivation in result["derivations"]:
-        print(f"- {derivation['short']} ({derivation['id']})")
-        if derivation["detail"]:
-            print(f"  Detail: {derivation['detail']}")
-        print("  Inputs:")
-        _print_derivation_roles(derivation["inputs"], indent="    ")
-        print("  Outputs:")
-        _print_derivation_roles(derivation["outputs"], indent="    ")
-
-    print("\nValidation issues:")
-    _print_issues(result["issues"])
-    if project["needs_review_count"] and not result["issues"]:
-        print("\nNext: run 'kflow context --affected' for the active review scope.")
-
-
-def _print_derivation_roles(roles: list[dict], indent: str = "- ") -> None:
-    for role in roles:
-        suffix = f" — {role['detail']}" if role["detail"] else ""
-        print(f"{indent}{role['name']} ({role['node']}): {role['short']}{suffix}")
-
-
-def _print_context(result: dict) -> None:
-    node = result["node"]
-    if node is None:
-        _print_affected_context(result)
-        return
-    relations = result["relations"]
-    affected = result["impact"]["affected_nodes"]
-    names = {
-        item["id"]: item["name"] for item in (node, *relations["upstream"], *affected)
-    }
-    print("Target Node:")
-    print(f"{node['name']} ({node['id']})")
-    print("\nFiles:")
-    for path in node["files"]:
-        print(path)
-    print("\nCurrent Status:")
-    print(result["status"])
-    print("\nWhy Relevant:")
-    if not result["reasons"]:
-        print("none")
-    for reason in result["reasons"]:
-        print(f"{reason}: {_explain_reasons([reason])}")
-    print("\nUpstream Dependencies:")
-    _print_node_names(relations["upstream"])
-    print("\nDownstream Impact:")
-    _print_impacts(affected, names)
-    print("\nRelated Derivations:")
-    if not relations["derivations"]:
-        print("none")
-    for derivation in relations["derivations"]:
-        print(f"{derivation['id']}: {derivation['short']}")
-    print("\nRecommended Review Order:")
-    _print_named_order(result["review_order"], names)
-    print("\nValidation Issues:")
-    _print_issues(result["issues"])
-
-
-def _print_explanation(result: dict) -> None:
-    roots = result["impact"]["changed_nodes"]
-    affected = result["impact"]["affected_nodes"]
-    names = {node["id"]: node["name"] for node in (*roots, *affected)}
-    print("Cause:")
-    if not roots:
-        print("none")
-    for node in roots:
-        reasons = ", ".join(node["reasons"]) or "explicit impact query"
-        print(f"{node['name']}: {reasons}")
-
-    direct = [item for item in affected if item["depth"] == 1]
-    indirect = [item for item in affected if item["depth"] > 1]
-    print("\nDirect impact:")
-    _print_impacts(direct, names)
-    print("\nIndirect impact:")
-    _print_impacts(indirect, names)
-    print("\nRecommended review order:")
-    _print_review_items(result)
-    print("\nValidation issues:")
-    _print_issues(result["issues"])
-
-
-def _print_review_order(result: dict) -> None:
-    print("Recommended review order:")
-    _print_review_items(result)
-    print("\nValidation issues:")
-    _print_issues(result["issues"])
-
-
-def _print_node_names(nodes: list[dict]) -> None:
-    if not nodes:
-        print("none")
-    for node in nodes:
-        print(node["name"])
-
-
-def _print_impacts(nodes: list[dict], names: dict[str, str]) -> None:
-    if not nodes:
-        print("none")
-    for node in nodes:
-        path = " -> ".join(names[node_id] for node_id in node["paths"][0]["nodes"])
-        print(node["name"])
-        print(f"Reason: {node['impact_reason']} via {path}")
-
-
-def _print_review_items(result: dict) -> None:
-    nodes = {
-        node["id"]: node["name"]
-        for node in (
-            *result["impact"]["changed_nodes"],
-            *result["impact"]["affected_nodes"],
-        )
-    }
-    _print_named_order(result["review_order"], nodes)
-
-
-def _print_affected_context(result: dict) -> None:
-    roots = result["impact"]["changed_nodes"]
-    affected = result["impact"]["affected_nodes"]
-    names = {node["id"]: node["name"] for node in (*roots, *affected)}
-    print("Changed Nodes:")
-    _print_node_names(roots)
-    print("\nNeed Review:")
-    _print_named_order(result["review_order"], names)
-    print("\nReasons:")
-    if not result["reasons"]:
-        print("none")
-    for item in roots:
-        reasons = ", ".join(item["reasons"]) or "none"
-        print(f"{item['name']}: {reasons}")
-    print("\nValidation Issues:")
-    _print_issues(result["issues"])
-
-
-def _print_scan(result: dict) -> None:
-    print("Managed file changes:")
-    found = False
-    for label in ("added", "modified", "deleted"):
-        for path in result["changes"][label]:
-            found = True
-            print(f"- {label}: {path}")
-    if not found:
-        print("none")
-    print("")
-    _print_status(result)
-
-
-def _print_named_order(order: list[str], names: dict[str, str]) -> None:
-    if not order:
-        print("none")
-    for position, node_id in enumerate(order, start=1):
-        print(f"{position}. {names[node_id]}")
+        references = issue.get("references", [])
+        detail = references[-1] if references else issue["message"]
+        print(f"- {issue['code']}: {detail}", file=output)

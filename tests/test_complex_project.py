@@ -5,7 +5,7 @@ from kflow.core.models import (
     DerivationOutput,
     KnowledgeNode,
 )
-from kflow.core.query import query_impact
+from kflow.core.query import query_impact, query_review_order
 from kflow.core.scan import confirm
 from kflow.core.storage import initialize_project, save_graph
 
@@ -78,20 +78,10 @@ def test_complex_branches_propagate_with_stable_review_order(tmp_path) -> None:
         "PRIVATE requirements changed", encoding="utf-8"
     )
 
-    result = query_impact(tmp_path)
+    result = query_review_order(tmp_path)
 
     assert result["ok"] is True
-    assert [item["id"] for item in result["impact"]["changed_nodes"]] == [
-        "nd_requirements"
-    ]
-    affected = {item["id"]: item for item in result["impact"]["affected_nodes"]}
-    assert set(affected) == set(graph.nodes) - {"nd_requirements"}
-    assert affected["nd_architecture"]["depth"] == 1
-    assert affected["nd_hardware"]["depth"] == 2
-    assert affected["nd_software"]["depth"] == 2
-    assert affected["nd_implementation"]["depth"] == 3
-    assert affected["nd_tests"]["depth"] == 4
-    assert all(item["reasons"] == ["input_changed"] for item in affected.values())
+    assert {item["id"] for item in result["nodes"]} == set(graph.nodes)
     assert result["review_order"] == [
         "nd_requirements",
         "nd_architecture",
@@ -109,16 +99,11 @@ def test_multi_output_branch_reports_both_direct_outputs(tmp_path) -> None:
     )
 
     result = query_impact(tmp_path, "architecture")
-    affected = {item["id"]: item for item in result["impact"]["affected_nodes"]}
-
-    assert affected["nd_hardware"]["depth"] == 1
-    assert affected["nd_hardware"]["impact_reason"] == "input_changed"
-    assert affected["nd_software"]["depth"] == 1
-    assert affected["nd_software"]["impact_reason"] == "input_changed"
-    assert result["review_order"] == [
-        "nd_architecture",
-        "nd_hardware",
-        "nd_software",
-        "nd_implementation",
-        "nd_tests",
+    assert [item["name"] for item in result["direct_outputs"]] == [
+        "hardware",
+        "software",
+    ]
+    assert [item["name"] for item in result["further_downstream"]] == [
+        "implementation",
+        "tests",
     ]

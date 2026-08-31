@@ -34,7 +34,7 @@ registered project files (read bytes only for fingerprints)
 
 - `kflow/cli.py` 提供人类文本与稳定 JSON 两种呈现。
 - `kflow/core/operations.py` 提供小型、原子的建图操作。
-- `kflow/core/query.py` 提供完整项目图、context、impact 和 affected context。
+- `kflow/core/query.py` 提供完整项目图、一跳 context、显式 impact 和 review order。
 - `kflow/core/graph.py`、`status.py`、`versioning.py` 实现纯领域规则。
 - `kflow/core/storage.py`、`scan.py` 负责规范事实、扫描和确认。
 - `kflow/human/` 是本地只读 Human Interface 适配层，只通过公共 Query API 提供 HTTP JSON、受限本地文件打开动作和包内静态资源。
@@ -164,7 +164,7 @@ derived_version(node) = SHA256(
 
 计算不读取 Confirmation。confirm 不改变当前 effective version，只记录已经检查到哪个版本条件；内容精确恢复时版本也恢复。
 
-## 6. 状态、scan 与 confirm
+## 6. 状态、即时扫描与 confirm
 
 状态由当前事实与 Confirmation 即时比较，不持久化颜色：
 
@@ -179,9 +179,9 @@ derived_version(node) = SHA256(
 
 文件缺失、非法图和损坏的机器数据是 validation issue，不是普通 review reason。
 
-### scan
+### 即时扫描
 
-scan 加载并校验元数据，读取受管文件字节计算 fingerprint，按拓扑序计算版本并比较 Confirmation。它只可更新可重建、被 Git 忽略的本地 cache，不修改共享事实或用户正文。
+每次只读查询都会加载并校验元数据，读取受管文件字节计算 fingerprint，按拓扑序计算版本并比较 Confirmation。查询不需要额外同步命令，也不保存“上次观察”基线；它不修改共享事实或用户正文。
 
 ### confirm
 
@@ -196,21 +196,14 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 ## 7. 影响与查询
 
-当前自动变化根是具有 `files_changed` 或 `derivation_changed` 的 Node。`unconfirmed` 单独展示，不自动解释为一次内容变化。
-
-影响从 input Node 沿 Derivation 传播到全部 outputs：
-
-- `depth=1` 是直接影响，更深层是传递影响；
-- 多根合并时保留最小深度、所有来源根和可解释路径；
-- `review_order` 是相关 needs-review 子图的稳定拓扑序，上游先于下游；
-- 显式 impact 查询始终从指定 Node 遍历，不依赖其当前状态。
+影响从 input Node 沿 Derivation 传播到全部 outputs。显式 impact 查询始终从指定 Node 遍历，不依赖其当前状态。review order 则只保留指定范围内 reasons 非空的 Node，直接使用稳定全局拓扑序，上游先于下游且每个 Node 只出现一次。
 
 公共查询：
 
 - `query_project_graph(root)`：全部 Node、完整 Derivation、当前状态、validation issues 与稳定拓扑顺序；
-- `query_context(root, reference)`：一个 Node 的状态、上下游和相关 Derivation；
-- `query_impact(root, reference=None)`：显式或自动变化根的下游影响；
-- `query_affected_context(root)`：当前变化范围内仍待检查的项目上下文。
+- `query_context(root, reference)`：目标状态、producer 和直接 consumer Derivation 的一跳邻域；
+- `query_impact(root, reference)`：目标直接进入的 Derivation、direct outputs 和更远下游；
+- `query_review_order(root, reference=None)`：全项目或指定下游子图中当前仍待检查的稳定顺序。
 
 查询可以按 Node ID、name 或已登记文件路径定位，操作目标仍是 Node。查询路径可将开头单个 `./` 和 Windows `\` 分隔符规范化为仓库相对 POSIX 路径；绝对路径、drive path 和包含 `..` 的路径不会匹配。未登记文件返回 `unknown_node` 查询错误，但不构成图校验错误，也不触发自动登记。
 
@@ -225,7 +218,6 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 ├── nodes/                   # tracked
 ├── derivations/             # tracked
 ├── confirmations/           # tracked
-├── cache/                   # ignored, rebuildable
 └── runtime/                 # ignored, disposable
 ```
 
@@ -243,7 +235,7 @@ Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/pro
 
 - 用户命令固定为顶层 `kflow <command>`，没有版本命令组。
 - 正式 Python 领域入口位于 `kflow.core`。
-- JSON 结果通过 `schema_version` 管理机器兼容性。
+- JSON 结果通过各协议的 `schema_version` 管理机器兼容性；Git metadata v2、Project Graph v2 与 task query v3 是独立边界。
 - 人类输出可以改善措辞与布局，但必须复用同一事实、reasons、impact 和 review order。
 - Agent 适配层不得复制影响传播或排序算法。
 - Human Interface 必须调用完整项目图公共查询，不得直接读取 `.kflow` JSON 后复制领域、状态、Derivation 序列化或排序逻辑。

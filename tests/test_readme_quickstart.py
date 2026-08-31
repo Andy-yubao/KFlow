@@ -220,16 +220,10 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
             "\n- The interface must support exporting a read-only project summary.\n"
         )
 
-    scanned = run_json(capsys, "scan")
-    status = run_json(capsys, "status")
-    affected = run_json(capsys, "context", "--affected")
+    status = run_json(capsys, "overview", "--status")
+    impact = run_json(capsys, "impact", "requirements")
     review_order = run_json(capsys, "review-order")
 
-    assert scanned["changes"] == {
-        "added": [],
-        "modified": ["docs/requirements.md"],
-        "deleted": [],
-    }
     by_name = {item["name"]: item for item in status["nodes"]}
     assert by_name["requirements"]["reasons"] == ["files_changed"]
     for name in (
@@ -242,20 +236,19 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
     assert by_name["constraints"]["reasons"] == []
 
     expected_order = [
-        nodes["requirements"]["id"],
-        nodes["architecture"]["id"],
-        *sorted((nodes["api-design"]["id"], nodes["testing-plan"]["id"])),
-        nodes["deployment-plan"]["id"],
+        node_id
+        for node_id in status["topological_order"]
+        if {item["id"]: item for item in status["nodes"]}[node_id]["reasons"]
     ]
-    assert affected["review_order"] == expected_order
     assert review_order["review_order"] == expected_order
+    assert [item["name"] for item in impact["direct_outputs"]] == ["architecture"]
 
     for node_id in expected_order:
         run_json(capsys, "confirm", node_id)
-    assert run_json(capsys, "context", "--affected")["review_order"] == []
+    assert run_json(capsys, "review-order")["review_order"] == []
     assert run_json(capsys, "validate") == {
         "ok": True,
-        "schema_version": 2,
+        "schema_version": 3,
         "issues": [],
     }
 
@@ -268,8 +261,9 @@ def test_readme_contains_the_real_guided_quickstart_commands():
         "kflow add-node",
         "kflow derive",
         "kflow confirm",
-        "kflow scan",
-        "kflow context --affected",
+        "kflow overview --status",
+        "kflow context",
+        "kflow impact",
         "kflow review-order",
         "kflow ui",
     )

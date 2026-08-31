@@ -40,7 +40,7 @@ describe("read request cancellation", () => {
       ["/api/project", { schema_version: 2, nodes: [], derivations: [] }],
       [
         "/api/review-order",
-        { schema_version: 2, review_order: [], issues: [] },
+        { schema_version: 3, review_order: [], issues: [] },
       ],
       ["/api/git-history", history],
       ["/api/graph-diff", unavailableDiff],

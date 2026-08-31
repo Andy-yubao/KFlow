@@ -11,7 +11,7 @@ from importlib import resources
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from kflow.core.query import query_affected_context, query_project_graph
+from kflow.core.query import query_project_graph, query_review_order
 from kflow.human.git_snapshot import (
     DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
@@ -65,7 +65,7 @@ def _handler_for(root: Path) -> type[BaseHTTPRequestHandler]:
                 self._send_json(query_project_graph(root))
                 return
             if path == "/api/review-order":
-                self._send_json(query_affected_context(root))
+                self._send_json(query_review_order(root))
                 return
             if path == "/api/git-history":
                 self._git_history(request.query)

@@ -8,18 +8,16 @@ def run_json(capsys, *arguments):
     return json.loads(capsys.readouterr().out)
 
 
-def test_real_project_scan_context_and_confirm_workflow(tmp_path, monkeypatch, capsys):
+def test_real_cli_workflow_needs_no_scan_step(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     docs = tmp_path / "docs"
     docs.mkdir()
     for name in ("requirements", "architecture", "implementation", "tests"):
-        (docs / f"{name}.md").write_text(f"PRIVATE {name}", encoding="utf-8")
+        (docs / f"{name}.md").write_text(name, encoding="utf-8")
 
     run_json(capsys, "init")
-    nodes = {
-        name: run_json(capsys, "add-node", name, "--file", f"docs/{name}.md")["node"]
-        for name in ("requirements", "architecture", "implementation", "tests")
-    }
+    for name in ("requirements", "architecture", "implementation", "tests"):
+        run_json(capsys, "add-node", name, "--file", f"docs/{name}.md")
     run_json(
         capsys,
         "derive",
@@ -27,10 +25,10 @@ def test_real_project_scan_context_and_confirm_workflow(tmp_path, monkeypatch, c
         "requirements produce architecture",
         "--input",
         "requirements",
-        "provides requirements",
+        "requirements role",
         "--output",
         "architecture",
-        "forms architecture",
+        "architecture role",
     )
     run_json(
         capsys,
@@ -39,50 +37,41 @@ def test_real_project_scan_context_and_confirm_workflow(tmp_path, monkeypatch, c
         "architecture produces implementation and tests",
         "--input",
         "architecture",
-        "provides architecture",
+        "architecture role",
         "--output",
         "implementation",
-        "forms implementation",
+        "implementation role",
         "--output",
         "tests",
-        "forms tests",
+        "tests role",
     )
-    for name in nodes:
+    for name in ("requirements", "architecture", "implementation", "tests"):
         run_json(capsys, "confirm", name)
 
-    (docs / "architecture.md").write_text(
-        "PRIVATE architecture changed", encoding="utf-8"
-    )
+    (docs / "architecture.md").write_text("changed", encoding="utf-8")
 
-    scanned = run_json(capsys, "scan")
-    explanation = run_json(capsys, "explain", "architecture")
-    project = run_json(capsys, "context", "--affected")
+    overview = run_json(capsys, "overview", "--status")
+    context = run_json(capsys, "context", "architecture")
+    impact = run_json(capsys, "impact", "architecture")
+    review = run_json(capsys, "review-order")
 
-    assert scanned["changes"] == {
-        "added": [],
-        "modified": ["docs/architecture.md"],
-        "deleted": [],
-    }
-    assert {item["name"] for item in explanation["impact"]["affected_nodes"]} == {
-        "implementation",
-        "tests",
-    }
-    assert project["review_order"] == [
-        nodes["architecture"]["id"],
-        *sorted((nodes["implementation"]["id"], nodes["tests"]["id"])),
+    by_name = {item["name"]: item for item in overview["nodes"]}
+    by_id = {item["id"]: item for item in overview["nodes"]}
+    assert by_name["architecture"]["reasons"] == ["files_changed"]
+    assert context["node"]["reasons"] == ["files_changed"]
+    output_names = {"implementation", "tests"}
+    expected_outputs = [
+        by_id[node_id]["name"]
+        for node_id in overview["topological_order"]
+        if by_id[node_id]["name"] in output_names
     ]
-    assert "PRIVATE" not in json.dumps(project)
+    assert [item["name"] for item in impact["direct_outputs"]] == expected_outputs
+    assert [item["id"] for item in review["nodes"]] == [
+        node_id
+        for node_id in overview["topological_order"]
+        if by_id[node_id]["reasons"]
+    ]
 
-    run_json(capsys, "confirm", "architecture")
-    remaining = run_json(capsys, "context", "--affected")
-    assert remaining["review_order"] == sorted(
-        (nodes["implementation"]["id"], nodes["tests"]["id"])
-    )
-
-    for name in ("implementation", "tests"):
+    for name in ("architecture", "implementation", "tests"):
         run_json(capsys, "confirm", name)
-    closed = run_json(capsys, "context", "--affected")
-
-    assert closed["status"] == "confirmed"
-    assert closed["review_order"] == []
-    assert closed["impact"] == {"changed_nodes": [], "affected_nodes": []}
+    assert run_json(capsys, "review-order")["review_order"] == []

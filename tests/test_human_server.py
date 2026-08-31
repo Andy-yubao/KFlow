@@ -9,7 +9,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from kflow.core.operations import add_node
-from kflow.core.query import query_affected_context, query_project_graph
+from kflow.core.query import query_project_graph, query_review_order
 from kflow.core.scan import confirm
 from kflow.core.storage import initialize_project
 from kflow.human import server as human_server
@@ -116,7 +116,7 @@ def test_review_order_endpoint_matches_public_query(tmp_path) -> None:
     with running_ui(tmp_path) as (_server, base_url):
         result = get_json(f"{base_url}/api/review-order")
 
-    assert result == query_affected_context(tmp_path)
+    assert result == query_review_order(tmp_path)
     assert result["review_order"] == [architecture.id]
 
 

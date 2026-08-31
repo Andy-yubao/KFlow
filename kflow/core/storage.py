@@ -37,15 +37,13 @@ def initialize_project(root: Path) -> None:
         raise StorageError(f"KFlow metadata already exists: {metadata}")
 
     metadata.mkdir(parents=False)
-    for name in ("nodes", "derivations", "confirmations", "cache", "runtime"):
+    for name in ("nodes", "derivations", "confirmations", "runtime"):
         (metadata / name).mkdir()
     _write_json(
         metadata / "project.json",
         {"kind": "kflow-project", "schema_version": SCHEMA_VERSION},
     )
-    (metadata / ".gitignore").write_text(
-        "/cache/\n/runtime/\n", encoding="utf-8", newline="\n"
-    )
+    (metadata / ".gitignore").write_text("/runtime/\n", encoding="utf-8", newline="\n")
 
 
 def save_graph(root: Path, graph: KnowledgeGraph) -> None:
@@ -104,40 +102,6 @@ def load_confirmations(root: Path) -> dict[str, NodeConfirmation]:
             raise StorageError(f"duplicate confirmation: {confirmation.node}")
         confirmations[confirmation.node] = confirmation
     return confirmations
-
-
-def load_scan_cache(root: Path) -> dict[str, Fingerprint] | None:
-    """Load the disposable last-scan file observations, if available."""
-    metadata = _require_project(root)
-    path = metadata / "cache" / "scan.json"
-    if not path.is_file():
-        return None
-    try:
-        value = _read_json(path)
-        _expect_header(value, "scan-cache")
-        files = value["files"]
-        if not isinstance(files, dict):
-            raise StorageError("scan cache files must be a JSON object")
-        return {name: _decode_fingerprint(item) for name, item in files.items()}
-    except (KeyError, TypeError, ValueError, StorageError):
-        # Cache is explicitly disposable and must never invalidate shared facts.
-        return None
-
-
-def save_scan_cache(root: Path, files: dict[str, Fingerprint]) -> None:
-    """Atomically save reusable scan observations outside tracked facts."""
-    metadata = _require_project(root)
-    _write_json(
-        metadata / "cache" / "scan.json",
-        {
-            "kind": "scan-cache",
-            "schema_version": SCHEMA_VERSION,
-            "files": {
-                path: _encode_fingerprint(fingerprint)
-                for path, fingerprint in sorted(files.items())
-            },
-        },
-    )
 
 
 def _require_project(root: Path) -> Path:

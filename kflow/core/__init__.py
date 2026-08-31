@@ -32,12 +32,22 @@ from kflow.core.storage import (
     save_graph,
     save_node,
 )
-from kflow.core.query import ProjectGraphResult, query_project_graph
+from kflow.core.query import (
+    ContextResult,
+    ImpactResult,
+    ProjectGraphResult,
+    ReviewOrderResult,
+    query_context,
+    query_impact,
+    query_project_graph,
+    query_review_order,
+)
 
 __all__ = [
     "ConfirmationFile",
     "ConfirmationInput",
     "ConfirmationProducer",
+    "ContextResult",
     "Derivation",
     "DerivationInput",
     "DerivationOutput",
@@ -45,9 +55,11 @@ __all__ = [
     "GraphValidationError",
     "KnowledgeGraph",
     "KnowledgeNode",
+    "ImpactResult",
     "NodeConfirmation",
     "NodeStatus",
     "ProjectGraphResult",
+    "ReviewOrderResult",
     "SCHEMA_VERSION",
     "ScanIssue",
     "ScanResult",
@@ -63,7 +75,10 @@ __all__ = [
     "initialize_project",
     "load_confirmations",
     "load_graph",
+    "query_context",
+    "query_impact",
     "query_project_graph",
+    "query_review_order",
     "save_confirmation",
     "save_derivation",
     "save_graph",

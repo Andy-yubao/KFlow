@@ -17,8 +17,8 @@ KFlow 不存储或返回文档正文，不是文档编辑器、通用语义检�
 
 ## 当前代码状态
 
-- `kflow/core/` 是唯一正式领域与应用实现，包含领域模型、图不变量、有效版本、Git-native 持久化、scan/status、单 Node confirm、只读项目图/context/impact 查询与稳定机器契约；`query_project_graph` 是 Human Interface 和 Agent Interface 共用的完整项目图公共入口。
-- `kflow/cli.py` 是唯一正式 CLI 入口，提供 `init`、`add-node`、`derive`、`overview`、`status`、`scan`、`confirm`、`validate`、`context`、`explain`、`review-order` 和 `ui`。
+- `kflow/core/` 是唯一正式领域与应用实现，包含领域模型、图不变量、有效版本、Git-native 持久化、即时状态、单 Node confirm、只读项目图/context/impact/review-order 查询与稳定机器契约；`query_project_graph` 是 Human Interface 和 Agent Interface 共用的完整项目图公共入口。
+- `kflow/cli.py` 是唯一正式 CLI 入口，提供 `init`、`add-node`、`derive`、`overview [--status]`、`context`、`impact`、`review-order`、`confirm`、`validate` 和 `ui`。
 - `kflow/human/` 与 `ui/` 实现当前本地只读 Human Interface，权威架构见 `docs/human-interface.md`；正式启动入口是 `kflow ui`。
 - Human Interface 必须消费 `query_project_graph`，不得直接读取 `.kflow` JSON 后复制图、状态、Derivation 序列化或拓扑排序逻辑，也不得把加载、选择或画布坐标等 UI 状态塞入 Core。
 - `kflow/human/static/` 是由 `ui/` 的 Vite build 生成并随 Python 包分发的资源，不手动编辑；`ui/node_modules/` 不进入 Git。

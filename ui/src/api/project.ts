@@ -15,6 +15,7 @@ import type {
 } from "../types/projectGraph";
 
 const SUPPORTED_SCHEMA_VERSION = 2;
+const REVIEW_ORDER_SCHEMA_VERSION = 3;
 const GRAPH_DIFF_SCHEMA_VERSION = 2;
 const GIT_HISTORY_SCHEMA_VERSION = 1;
 
@@ -178,7 +179,7 @@ function parseProjectGraph(value: unknown): ProjectGraphResult {
 function parseReviewOrder(value: unknown): ReviewOrderResult {
   if (
     !isRecord(value) ||
-    value.schema_version !== SUPPORTED_SCHEMA_VERSION ||
+    value.schema_version !== REVIEW_ORDER_SCHEMA_VERSION ||
     !Array.isArray(value.review_order) ||
     !Array.isArray(value.issues)
   ) {

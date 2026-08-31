@@ -42,7 +42,7 @@ def test_ui_rejects_json_before_starting(arguments, monkeypatch, capsys) -> None
     result = json.loads(capsys.readouterr().out)
     assert result == {
         "ok": False,
-        "schema_version": 2,
+        "schema_version": 3,
         "issues": [
             {
                 "code": "invalid_argument",

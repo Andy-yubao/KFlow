@@ -1,16 +1,18 @@
-"""Stable read-only context and impact queries for KFlow."""
+"""Stable read-only project, context, impact, and review queries."""
 
 from __future__ import annotations
 
-import heapq
-from collections import deque
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import TypedDict
 
 from kflow.core.graph import GraphValidationError, KnowledgeGraph
 from kflow.core.models import Derivation
 from kflow.core.scan import ScanIssue, ScanResult, resolve_node_id, scan
 from kflow.core.storage import SCHEMA_VERSION, StorageError
+
+
+PROJECT_GRAPH_SCHEMA_VERSION = SCHEMA_VERSION
+QUERY_SCHEMA_VERSION = 3
 
 
 class QueryIssue(TypedDict):
@@ -29,34 +31,12 @@ class NodeIdentity(TypedDict):
     files: list[str]
 
 
-class NodeResult(NodeIdentity):
-    """A queried Node plus changed paths detected by the current scan."""
-
-    changed_files: list[str]
-
-
-class StatusNode(NodeResult):
+class StatusNode(NodeIdentity):
     """A Node annotated with its current review state."""
 
+    changed_files: list[str]
     status: str | None
     reasons: list[str]
-
-
-class ImpactPath(TypedDict):
-    """One explicit downstream path from a change root."""
-
-    root: str
-    nodes: list[str]
-    derivations: list[str]
-
-
-class AffectedNode(StatusNode):
-    """A downstream Node annotated with impact provenance."""
-
-    depth: int
-    roots: list[str]
-    impact_reason: str
-    paths: list[ImpactPath]
 
 
 class DerivationRole(TypedDict):
@@ -69,42 +49,13 @@ class DerivationRole(TypedDict):
 
 
 class DerivationResult(TypedDict):
-    """Explicit Derivation facts safe for Agent consumption."""
+    """One complete, atomic Derivation safe for Agent consumption."""
 
     id: str
     short: str
     detail: str
     inputs: list[DerivationRole]
     outputs: list[DerivationRole]
-
-
-class RelationsResult(TypedDict):
-    """Topology related to the query target."""
-
-    upstream: list[NodeIdentity]
-    downstream: list[NodeIdentity]
-    derivations: list[DerivationResult]
-
-
-class ImpactResult(TypedDict):
-    """Change roots and the downstream Nodes they may affect."""
-
-    changed_nodes: list[StatusNode]
-    affected_nodes: list[AffectedNode]
-
-
-class QueryResult(TypedDict):
-    """Frozen machine-contract result shared by all public query functions."""
-
-    ok: bool
-    schema_version: int
-    node: NodeResult | None
-    status: str | None
-    reasons: list[str]
-    relations: RelationsResult
-    impact: ImpactResult
-    review_order: list[str]
-    issues: list[QueryIssue]
 
 
 class ProjectSummary(TypedDict):
@@ -129,29 +80,54 @@ class ProjectGraphResult(TypedDict):
     issues: list[QueryIssue]
 
 
-QUERY_SCHEMA_FIELDS: Final[frozenset[str]] = frozenset(
-    {
-        "ok",
-        "schema_version",
-        "node",
-        "status",
-        "reasons",
-        "relations",
-        "impact",
-        "review_order",
-        "issues",
-    }
-)
+class ContextResult(TypedDict):
+    """One Node and its direct producing and consuming Derivations."""
+
+    ok: bool
+    schema_version: int
+    node: StatusNode | None
+    nodes: list[StatusNode]
+    producing_derivation: DerivationResult | None
+    consumer_derivations: list[DerivationResult]
+    issues: list[QueryIssue]
+
+
+class ImpactResult(TypedDict):
+    """One Node's direct Derivations and more distant downstream Nodes."""
+
+    ok: bool
+    schema_version: int
+    node: StatusNode | None
+    direct_derivations: list[DerivationResult]
+    direct_outputs: list[NodeIdentity]
+    further_downstream: list[NodeIdentity]
+    issues: list[QueryIssue]
+
+
+class ReviewOrderResult(TypedDict):
+    """Current needs-review Nodes in a project or downstream scope."""
+
+    ok: bool
+    schema_version: int
+    scope: NodeIdentity | None
+    nodes: list[StatusNode]
+    review_order: list[str]
+    issues: list[QueryIssue]
+
 
 __all__ = [
-    "QUERY_SCHEMA_FIELDS",
+    "ContextResult",
+    "ImpactResult",
+    "PROJECT_GRAPH_SCHEMA_VERSION",
     "ProjectGraphResult",
-    "QueryResult",
+    "QUERY_SCHEMA_VERSION",
+    "ReviewOrderResult",
     "present_derivation",
-    "query_affected_context",
     "query_context",
     "query_impact",
     "query_project_graph",
+    "query_review_order",
+    "sorted_derivations",
 ]
 
 
@@ -169,11 +145,10 @@ def query_project_graph(root: Path) -> ProjectGraphResult:
         return _project_graph_error(error)
 
     graph = scanned.graph
-    topological_order = list(graph.topological_order())
-    nodes = [_status_node(scanned, node_id) for node_id in topological_order]
+    nodes = [_status_node(scanned, node_id) for node_id in graph.topological_order()]
     derivations = [
-        present_derivation(graph, graph.derivations[derivation_id])
-        for derivation_id in sorted(graph.derivations)
+        present_derivation(graph, derivation)
+        for derivation in sorted_derivations(graph)
     ]
     issues = [_issue_result(issue) for issue in scanned.issues]
     needs_review_count = sum(bool(node["reasons"]) for node in nodes)
@@ -186,7 +161,7 @@ def query_project_graph(root: Path) -> ProjectGraphResult:
     )
     return {
         "ok": not issues,
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PROJECT_GRAPH_SCHEMA_VERSION,
         "project": {
             "status": status,
             "node_count": len(nodes),
@@ -196,19 +171,13 @@ def query_project_graph(root: Path) -> ProjectGraphResult:
         },
         "nodes": nodes,
         "derivations": derivations,
-        "topological_order": topological_order,
+        "topological_order": list(graph.topological_order()),
         "issues": issues,
     }
 
 
-def query_context(root: Path, node_reference: str) -> QueryResult:
-    """Return one Node's stable status and topology contract.
-
-    ``node_reference`` accepts a stable Node ID, unique Node name, or registered
-    repository-relative file path. Failures are returned in the same
-    :class:`QueryResult` shape with ``ok=False``; registered file contents are
-    never included.
-    """
+def query_context(root: Path, node_reference: str) -> ContextResult:
+    """Return only one Node's direct producing and consuming relationships."""
     try:
         scanned = scan(root)
         graph = scanned.graph
@@ -220,48 +189,41 @@ def query_context(root: Path, node_reference: str) -> QueryResult:
         TypeError,
         ValueError,
     ) as error:
-        return _error_result(error, node_reference)
+        return _context_error(error, node_reference)
 
-    upstream_ids = tuple(
-        candidate for candidate in graph.upstream(node_id) if candidate != node_id
-    )
-    impact = _build_impact(scanned, (node_id,))
-    downstream_ids = tuple(item["id"] for item in impact["affected_nodes"])
-
-    derivation_ids: set[str] = set()
-    for candidate in (*upstream_ids, node_id, *downstream_ids):
-        producer = graph.producer_of(candidate)
-        if producer is not None:
-            derivation_ids.add(producer.id)
-
-    status = scanned.statuses.get(node_id)
-    return _query_result(
-        scanned,
-        node=_node_result(scanned, node_id),
-        status=None if status is None else status.status,
-        reasons=[] if status is None else list(status.reasons),
-        upstream=[_node_identity(graph, candidate) for candidate in upstream_ids],
-        downstream=[_node_identity(graph, candidate) for candidate in downstream_ids],
-        derivations=[
-            present_derivation(graph, graph.derivations[derivation_id])
-            for derivation_id in sorted(derivation_ids)
+    producer = graph.producer_of(node_id)
+    consumers = sorted_derivations(graph, graph.consumer_derivations(node_id))
+    related_ids = {node_id}
+    relationships = (*(() if producer is None else (producer,)), *consumers)
+    for derivation in relationships:
+        related_ids.update(item.node for item in derivation.inputs)
+        related_ids.update(item.node for item in derivation.outputs)
+    nodes = [
+        _status_node(scanned, candidate)
+        for candidate in graph.topological_order()
+        if candidate in related_ids
+    ]
+    return {
+        "ok": not scanned.issues,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "node": _status_node(scanned, node_id),
+        "nodes": nodes,
+        "producing_derivation": (
+            None if producer is None else present_derivation(graph, producer)
+        ),
+        "consumer_derivations": [
+            present_derivation(graph, derivation) for derivation in consumers
         ],
-        impact=impact,
-        review_order=[
-            candidate for candidate in impact["review_order"] if candidate != node_id
-        ],
-    )
+        "issues": [_issue_result(issue) for issue in scanned.issues],
+    }
 
 
-def query_affected_context(root: Path) -> QueryResult:
-    """Return current change roots and the remaining affected review scope.
-
-    A valid project with no active change roots returns a successful, empty
-    result. Invalid or uninitialized projects retain the same result shape and
-    report a machine-readable issue.
-    """
+def query_impact(root: Path, node_reference: str) -> ImpactResult:
+    """Return direct consumer Derivations and the Nodes beyond direct outputs."""
     try:
         scanned = scan(root)
+        graph = scanned.graph
+        node_id = resolve_node_id(graph, node_reference)
     except (
         GraphValidationError,
         KeyError,
@@ -269,78 +231,50 @@ def query_affected_context(root: Path) -> QueryResult:
         TypeError,
         ValueError,
     ) as error:
-        return _error_result(error, None)
+        return _impact_error(error, node_reference)
 
-    graph = scanned.graph
-    changed_root_ids = tuple(
-        node_id
-        for node_id in graph.topological_order()
-        if _is_change_root(scanned, node_id)
-    )
-    traversal_roots = _remaining_change_roots(scanned, changed_root_ids)
-    project_impact = _build_impact(scanned, traversal_roots)
-    review_ids = tuple(project_impact["review_order"])
-    affected_nodes = [
-        item for item in project_impact["affected_nodes"] if item["id"] in review_ids
-    ]
-    changed_nodes = [
-        _status_node(scanned, node_id)
-        for node_id in changed_root_ids
-        if node_id in review_ids
-    ]
-    derivation_ids = {
-        derivation_id
-        for item in affected_nodes
-        for path in item["paths"]
-        for derivation_id in path["derivations"]
+    direct_derivations = sorted_derivations(graph, graph.consumer_derivations(node_id))
+    direct_output_ids = {
+        output.node
+        for derivation in direct_derivations
+        for output in derivation.outputs
     }
-    impact = {
-        "changed_nodes": changed_nodes,
-        "affected_nodes": affected_nodes,
-        "review_order": review_ids,
-    }
-    reasons = sorted(
-        {
-            reason
-            for node_id in review_ids
-            for reason in scanned.statuses[node_id].reasons
-        }
-    )
-    return _query_result(
-        scanned,
-        node=None,
-        status="affected" if review_ids else "confirmed",
-        reasons=reasons,
-        upstream=[],
-        downstream=[_node_identity(graph, node_id) for node_id in review_ids],
-        derivations=[
-            present_derivation(graph, graph.derivations[derivation_id])
-            for derivation_id in sorted(derivation_ids)
+    reachable = set(graph.downstream(node_id))
+    further_ids = reachable - direct_output_ids - {node_id}
+    return {
+        "ok": not scanned.issues,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "node": _status_node(scanned, node_id),
+        "direct_derivations": [
+            present_derivation(graph, derivation) for derivation in direct_derivations
         ],
-        impact=impact,
-        review_order=list(review_ids),
-    )
+        "direct_outputs": [
+            _node_identity(graph, candidate)
+            for candidate in graph.topological_order()
+            if candidate in direct_output_ids
+        ],
+        "further_downstream": [
+            _node_identity(graph, candidate)
+            for candidate in graph.topological_order()
+            if candidate in further_ids
+        ],
+        "issues": [_issue_result(issue) for issue in scanned.issues],
+    }
 
 
-def query_impact(root: Path, node_reference: str | None = None) -> QueryResult:
-    """Explain explicit or currently detected downstream impact.
-
-    When ``node_reference`` is omitted, file and producing-Derivation changes are
-    used as roots. An explicit reference is always traversed, regardless of
-    status, and accepts a Node ID, unique name, or registered repository-relative
-    file path. Errors use the same stable :class:`QueryResult` envelope.
-    """
+def query_review_order(
+    root: Path, node_reference: str | None = None
+) -> ReviewOrderResult:
+    """Return current needs-review Nodes in project or inclusive downstream scope."""
     try:
         scanned = scan(root)
         graph = scanned.graph
         if node_reference is None:
-            root_ids = tuple(
-                node_id
-                for node_id in graph.topological_order()
-                if _is_change_root(scanned, node_id)
-            )
+            scope_id = None
+            included = set(graph.nodes)
         else:
-            root_ids = (resolve_node_id(graph, node_reference),)
+            scope_id = resolve_node_id(graph, node_reference)
+            included = set(graph.downstream(scope_id))
     except (
         GraphValidationError,
         KeyError,
@@ -348,293 +282,75 @@ def query_impact(root: Path, node_reference: str | None = None) -> QueryResult:
         TypeError,
         ValueError,
     ) as error:
-        return _error_result(error, node_reference)
+        return _review_order_error(error, node_reference)
 
-    impact = _build_impact(scanned, root_ids)
-    target_id = root_ids[0] if node_reference is not None else None
-    target_status = None if target_id is None else scanned.statuses.get(target_id)
-    affected_ids = tuple(item["id"] for item in impact["affected_nodes"])
-    derivation_ids = {
-        derivation_id
-        for item in impact["affected_nodes"]
-        for path in item["paths"]
-        for derivation_id in path["derivations"]
-    }
-    project_reasons = sorted(
-        {reason for item in impact["changed_nodes"] for reason in item["reasons"]}
-    )
-    return _query_result(
-        scanned,
-        node=None if target_id is None else _node_result(scanned, target_id),
-        status=(
-            ("affected" if impact["review_order"] else "confirmed")
-            if target_id is None
-            else (None if target_status is None else target_status.status)
-        ),
-        reasons=(
-            project_reasons
-            if target_id is None
-            else ([] if target_status is None else list(target_status.reasons))
-        ),
-        upstream=[],
-        downstream=[_node_identity(graph, candidate) for candidate in affected_ids],
-        derivations=[
-            present_derivation(graph, graph.derivations[derivation_id])
-            for derivation_id in sorted(derivation_ids)
-        ],
-        impact=impact,
-        review_order=impact["review_order"],
-    )
-
-
-def _query_result(
-    scanned: ScanResult,
-    *,
-    node: NodeResult | None,
-    status: str | None,
-    reasons: list[str],
-    upstream: list[NodeIdentity],
-    downstream: list[NodeIdentity],
-    derivations: list[DerivationResult],
-    impact: ImpactResult,
-    review_order: list[str],
-) -> QueryResult:
-    result: QueryResult = {
+    review_ids = [
+        node_id
+        for node_id in graph.topological_order()
+        if node_id in included and _needs_review(scanned, node_id)
+    ]
+    return {
         "ok": not scanned.issues,
-        "schema_version": SCHEMA_VERSION,
-        "node": node,
-        "status": status,
-        "reasons": reasons,
-        "relations": {
-            "upstream": upstream,
-            "downstream": downstream,
-            "derivations": derivations,
-        },
-        "impact": {
-            "changed_nodes": impact["changed_nodes"],
-            "affected_nodes": impact["affected_nodes"],
-        },
-        "review_order": review_order,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "scope": None if scope_id is None else _node_identity(graph, scope_id),
+        "nodes": [_status_node(scanned, node_id) for node_id in review_ids],
+        "review_order": review_ids,
         "issues": [_issue_result(issue) for issue in scanned.issues],
     }
-    assert set(result) == QUERY_SCHEMA_FIELDS
-    return result
 
 
-def _error_result(error: Exception, reference: str | None) -> QueryResult:
-    if isinstance(error, GraphValidationError):
-        issues: list[QueryIssue] = [
-            {
-                "code": issue.code,
-                "message": issue.message,
-                "references": list(issue.references),
-            }
-            for issue in error.issues
-        ]
-    else:
-        code = "unknown_node" if isinstance(error, KeyError) else "invalid_project"
-        issues = [
-            {
-                "code": code,
-                "message": str(error).strip("'"),
-                "references": [] if reference is None else [reference],
-            }
-        ]
-    return {
-        "ok": False,
-        "schema_version": SCHEMA_VERSION,
-        "node": None,
-        "status": "error",
-        "reasons": [],
-        "relations": {"upstream": [], "downstream": [], "derivations": []},
-        "impact": {"changed_nodes": [], "affected_nodes": []},
-        "review_order": [],
-        "issues": issues,
+def sorted_derivations(
+    graph: KnowledgeGraph, derivations: tuple[Derivation, ...] | None = None
+) -> tuple[Derivation, ...]:
+    """Sort Derivations by output topology, then by stable internal ID."""
+    candidates = (
+        tuple(graph.derivations.values()) if derivations is None else derivations
+    )
+    positions = {
+        node_id: position for position, node_id in enumerate(graph.topological_order())
     }
 
+    def key(derivation: Derivation) -> tuple[tuple[int, ...], str]:
+        outputs = tuple(sorted(positions[item.node] for item in derivation.outputs))
+        return outputs, derivation.id
 
-def _project_graph_error(error: Exception) -> ProjectGraphResult:
-    if isinstance(error, GraphValidationError):
-        issues = [
-            {
-                "code": issue.code,
-                "message": issue.message,
-                "references": list(issue.references),
-            }
-            for issue in error.issues
-        ]
-    else:
-        issues = [
-            {
-                "code": "invalid_project",
-                "message": str(error).strip("'"),
-                "references": [],
-            }
-        ]
-    return {
-        "ok": False,
-        "schema_version": SCHEMA_VERSION,
-        "project": {
-            "status": "invalid",
-            "node_count": 0,
-            "derivation_count": 0,
-            "needs_review_count": 0,
-            "issue_count": len(issues),
-        },
-        "nodes": [],
-        "derivations": [],
-        "topological_order": [],
-        "issues": issues,
+    return tuple(sorted(candidates, key=key))
+
+
+def present_derivation(
+    graph: KnowledgeGraph, derivation: Derivation
+) -> DerivationResult:
+    """Present one complete Derivation using topological role ordering."""
+    positions = {
+        node_id: position for position, node_id in enumerate(graph.topological_order())
     }
-
-
-def _build_impact(scanned: ScanResult, root_ids: tuple[str, ...]) -> dict:
-    graph = scanned.graph
-    impact: dict[str, dict] = {}
-    for root_id in root_ids:
-        paths = _shortest_paths(graph, root_id)
-        for target_id, path in paths.items():
-            if target_id == root_id:
-                continue
-            entry = impact.setdefault(
-                target_id,
-                {"depth": len(path["derivations"]), "roots": [], "paths": []},
+    return {
+        "id": derivation.id,
+        "short": derivation.short,
+        "detail": derivation.detail,
+        "inputs": [
+            {
+                "node": item.node,
+                "name": graph.nodes[item.node].name,
+                "short": item.short,
+                "detail": item.detail,
+            }
+            for item in sorted(
+                derivation.inputs, key=lambda role: (positions[role.node], role.node)
             )
-            entry["depth"] = min(entry["depth"], len(path["derivations"]))
-            entry["roots"].append(root_id)
-            entry["paths"].append({"root": root_id, **path})
-
-    affected_ids = tuple(
-        node_id for node_id in graph.topological_order() if node_id in impact
-    )
-    related_ids = set(root_ids) | set(affected_ids)
-    distances = {node_id: 0 for node_id in root_ids}
-    for node_id, entry in impact.items():
-        distances.setdefault(node_id, entry["depth"])
-    review_order = _review_order(scanned, related_ids, distances)
-
-    affected_nodes = []
-    for node_id in affected_ids:
-        status = scanned.statuses.get(node_id)
-        entry = impact[node_id]
-        affected_nodes.append(
+        ],
+        "outputs": [
             {
-                **_node_identity(graph, node_id),
-                "status": None if status is None else status.status,
-                "reasons": [] if status is None else list(status.reasons),
-                "changed_files": [] if status is None else list(status.changed_files),
-                "depth": entry["depth"],
-                "roots": entry["roots"],
-                "impact_reason": (
-                    "input_changed" if entry["depth"] == 1 else "upstream_changed"
-                ),
-                "paths": entry["paths"],
+                "node": item.node,
+                "name": graph.nodes[item.node].name,
+                "short": item.short,
+                "detail": item.detail,
             }
-        )
-
-    return {
-        "changed_nodes": [_status_node(scanned, node_id) for node_id in root_ids],
-        "affected_nodes": affected_nodes,
-        "review_order": review_order,
+            for item in sorted(
+                derivation.outputs, key=lambda role: (positions[role.node], role.node)
+            )
+        ],
     }
-
-
-def _shortest_paths(graph: KnowledgeGraph, root_id: str) -> dict[str, dict]:
-    paths = {root_id: {"nodes": [root_id], "derivations": []}}
-    queue = deque([root_id])
-    while queue:
-        node_id = queue.popleft()
-        for target_id, derivation_id in _outgoing_edges(graph, node_id):
-            if target_id in paths:
-                continue
-            paths[target_id] = {
-                "nodes": [*paths[node_id]["nodes"], target_id],
-                "derivations": [*paths[node_id]["derivations"], derivation_id],
-            }
-            queue.append(target_id)
-    return paths
-
-
-def _outgoing_edges(graph: KnowledgeGraph, node_id: str) -> tuple[tuple[str, str], ...]:
-    edges = (
-        (output.node, derivation.id)
-        for derivation in graph.consumer_derivations(node_id)
-        for output in derivation.outputs
-    )
-    return tuple(sorted(edges))
-
-
-def _review_order(
-    scanned: ScanResult, related_ids: set[str], distances: dict[str, int]
-) -> list[str]:
-    relevant = {node_id for node_id in related_ids if _needs_review(scanned, node_id)}
-    adjacency = {node_id: set() for node_id in relevant}
-    in_degree = {node_id: 0 for node_id in relevant}
-    for node_id in relevant:
-        for target_id, _derivation_id in _outgoing_edges(scanned.graph, node_id):
-            if target_id not in relevant or target_id in adjacency[node_id]:
-                continue
-            adjacency[node_id].add(target_id)
-            in_degree[target_id] += 1
-
-    ready = [
-        (distances[node_id], node_id)
-        for node_id, degree in in_degree.items()
-        if degree == 0
-    ]
-    heapq.heapify(ready)
-    result = []
-    while ready:
-        _distance, node_id = heapq.heappop(ready)
-        result.append(node_id)
-        for target_id in sorted(adjacency[node_id]):
-            in_degree[target_id] -= 1
-            if in_degree[target_id] == 0:
-                heapq.heappush(ready, (distances[target_id], target_id))
-    return result
-
-
-def _is_change_root(scanned: ScanResult, node_id: str) -> bool:
-    status = scanned.statuses.get(node_id)
-    if status is None:
-        return False
-    return bool({"files_changed", "derivation_changed"} & set(status.reasons))
-
-
-def _remaining_change_roots(
-    scanned: ScanResult, changed_root_ids: tuple[str, ...]
-) -> tuple[str, ...]:
-    """Recover reviewed roots still visible in downstream input baselines."""
-    candidates = set(changed_root_ids)
-    for node_id, status in scanned.statuses.items():
-        if "input_changed" not in status.reasons:
-            continue
-        producer = scanned.graph.producer_of(node_id)
-        confirmation = scanned.confirmations.get(node_id)
-        if producer is None or confirmation is None:
-            continue
-        confirmed_inputs = {
-            item.node: item.effective_version for item in confirmation.inputs
-        }
-        candidates.update(
-            item.node
-            for item in producer.inputs
-            if confirmed_inputs.get(item.node)
-            != scanned.effective_versions.get(item.node)
-        )
-
-    topmost = {
-        candidate
-        for candidate in candidates
-        if not any(
-            candidate in scanned.graph.downstream(other)
-            for other in candidates
-            if other != candidate
-        )
-    }
-    return tuple(
-        node_id for node_id in scanned.graph.topological_order() if node_id in topmost
-    )
 
 
 def _needs_review(scanned: ScanResult, node_id: str) -> bool:
@@ -647,49 +363,87 @@ def _node_identity(graph: KnowledgeGraph, node_id: str) -> NodeIdentity:
     return {"id": node.id, "name": node.name, "files": list(node.files)}
 
 
-def _node_result(scanned: ScanResult, node_id: str) -> NodeResult:
+def _status_node(scanned: ScanResult, node_id: str) -> StatusNode:
     status = scanned.statuses.get(node_id)
     return {
         **_node_identity(scanned.graph, node_id),
         "changed_files": [] if status is None else list(status.changed_files),
-    }
-
-
-def _status_node(scanned: ScanResult, node_id: str) -> StatusNode:
-    status = scanned.statuses.get(node_id)
-    return {
-        **_node_result(scanned, node_id),
         "status": None if status is None else status.status,
         "reasons": [] if status is None else list(status.reasons),
     }
 
 
-def present_derivation(
-    graph: KnowledgeGraph, derivation: Derivation
-) -> DerivationResult:
-    """Present one complete Derivation using the stable machine contract."""
+def _issues_from_error(error: Exception, reference: str | None) -> list[QueryIssue]:
+    if isinstance(error, GraphValidationError):
+        return [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "references": list(issue.references),
+            }
+            for issue in error.issues
+        ]
+    code = "unknown_node" if isinstance(error, KeyError) else "invalid_project"
+    return [
+        {
+            "code": code,
+            "message": str(error).strip("'"),
+            "references": [] if reference is None else [reference],
+        }
+    ]
+
+
+def _context_error(error: Exception, reference: str) -> ContextResult:
     return {
-        "id": derivation.id,
-        "short": derivation.short,
-        "detail": derivation.detail,
-        "inputs": [
-            {
-                "node": item.node,
-                "name": graph.nodes[item.node].name,
-                "short": item.short,
-                "detail": item.detail,
-            }
-            for item in sorted(derivation.inputs, key=lambda role: role.node)
-        ],
-        "outputs": [
-            {
-                "node": item.node,
-                "name": graph.nodes[item.node].name,
-                "short": item.short,
-                "detail": item.detail,
-            }
-            for item in sorted(derivation.outputs, key=lambda role: role.node)
-        ],
+        "ok": False,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "node": None,
+        "nodes": [],
+        "producing_derivation": None,
+        "consumer_derivations": [],
+        "issues": _issues_from_error(error, reference),
+    }
+
+
+def _impact_error(error: Exception, reference: str) -> ImpactResult:
+    return {
+        "ok": False,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "node": None,
+        "direct_derivations": [],
+        "direct_outputs": [],
+        "further_downstream": [],
+        "issues": _issues_from_error(error, reference),
+    }
+
+
+def _review_order_error(error: Exception, reference: str | None) -> ReviewOrderResult:
+    return {
+        "ok": False,
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "scope": None,
+        "nodes": [],
+        "review_order": [],
+        "issues": _issues_from_error(error, reference),
+    }
+
+
+def _project_graph_error(error: Exception) -> ProjectGraphResult:
+    issues = _issues_from_error(error, None)
+    return {
+        "ok": False,
+        "schema_version": PROJECT_GRAPH_SCHEMA_VERSION,
+        "project": {
+            "status": "invalid",
+            "node_count": 0,
+            "derivation_count": 0,
+            "needs_review_count": 0,
+            "issue_count": len(issues),
+        },
+        "nodes": [],
+        "derivations": [],
+        "topological_order": [],
+        "issues": issues,
     }
 
 

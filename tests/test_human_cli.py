@@ -9,40 +9,60 @@ from kflow.human import runtime
 
 
 def test_ui_parser_accepts_port_and_no_open() -> None:
-    args = build_parser().parse_args(["ui", "--port", "8765", "--no-open"])
-
-    assert args.command == "ui"
-    assert args.port == 8765
-    assert args.no_open is True
-
-    start = build_parser().parse_args(
-        ["ui", "start", "--port", "8766", "--no-open", "--foreground"]
-    )
+    start = build_parser().parse_args(["ui", "start", "--port", "8766", "--no-open"])
+    assert start.command == "ui"
     assert start.ui_command == "start"
     assert start.port == 8766
     assert start.no_open is True
-    assert start.foreground is True
 
 
-def test_ui_and_start_pass_options_to_the_lifecycle_runner(
-    tmp_path, monkeypatch
-) -> None:
+def test_ui_start_passes_options_to_the_lifecycle_runner(tmp_path, monkeypatch) -> None:
     calls = []
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "kflow.cli.start_ui",
-        lambda root, *, port, open_browser, foreground: calls.append(
-            (root, port, open_browser, foreground)
-        ),
+        lambda root, *, port, open_browser: calls.append((root, port, open_browser)),
     )
 
-    main(["ui", "--port", "8765", "--no-open"])
-    main(["ui", "start", "--port", "8766", "--no-open", "--foreground"])
+    main(["ui", "start", "--port", "8766", "--no-open"])
 
-    assert calls == [
-        (tmp_path, 8765, False, False),
-        (tmp_path, 8766, False, True),
-    ]
+    assert calls == [(tmp_path, 8766, False)]
+
+
+def test_ui_without_action_prints_help_without_starting(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "kflow.cli.start_ui",
+        lambda *args, **kwargs: pytest.fail("UI server should not start"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ui"])
+
+    assert exit_info.value.code != 0
+    output = capsys.readouterr()
+    assert "usage: kflow ui" in output.out
+    assert "start" in output.out
+    assert "stop" in output.out
+    assert "status" in output.out
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["ui", "--foreground"],
+        ["ui", "start", "--foreground"],
+    ],
+)
+def test_ui_rejects_removed_foreground_option(arguments, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "kflow.cli.start_ui",
+        lambda *args, **kwargs: pytest.fail("UI server should not start"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(arguments)
+
+    assert exit_info.value.code == 2
 
 
 def test_ui_stop_and_status_dispatch_without_starting(tmp_path, monkeypatch) -> None:
@@ -65,10 +85,8 @@ def test_ui_stop_and_status_dispatch_without_starting(tmp_path, monkeypatch) -> 
 @pytest.mark.parametrize(
     "arguments",
     [
-        ["ui"],
         ["ui", "start"],
         ["ui", "start", "--no-open"],
-        ["ui", "start", "--foreground", "--no-open"],
     ],
 )
 def test_ui_start_forms_reject_uninitialized_directory_without_side_effects(
@@ -81,11 +99,6 @@ def test_ui_start_forms_reject_uninitialized_directory_without_side_effects(
         runtime.subprocess,
         "Popen",
         lambda *_args, **_kwargs: pytest.fail("must not spawn"),
-    )
-    monkeypatch.setattr(
-        runtime,
-        "run_ui",
-        lambda *_args, **_kwargs: pytest.fail("must not run foreground server"),
     )
     monkeypatch.setattr(
         runtime.webbrowser,

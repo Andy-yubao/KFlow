@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 from kflow.core.query import query_project_graph
+from kflow.human.processes import hidden_subprocess_kwargs
 
 
 class RevisionTracker:
@@ -220,6 +221,7 @@ def _git_text(root: Path, *arguments: str) -> str | None:
             text=True,
             encoding="utf-8",
             errors="replace",
+            **hidden_subprocess_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return None

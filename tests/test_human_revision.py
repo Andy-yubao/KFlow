@@ -11,6 +11,7 @@ from kflow.core.query import query_project_graph
 from kflow.core.scan import confirm
 from kflow.core.storage import initialize_project
 from kflow.human import revision
+from kflow.human.processes import CREATE_NO_WINDOW, hidden_subprocess_kwargs
 from kflow.human.revision import (
     RevisionTracker,
     git_revision,
@@ -27,6 +28,75 @@ def _tracker(root: Path) -> RevisionTracker:
 
 def _git(root: Path, *arguments: str) -> None:
     subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+
+
+def test_hidden_subprocess_kwargs_are_windows_only(monkeypatch) -> None:
+    import kflow.human.processes as processes
+
+    monkeypatch.setattr(processes, "os", type("OS", (), {"name": "nt"})())
+    assert hidden_subprocess_kwargs() == {"creationflags": CREATE_NO_WINDOW}
+
+    monkeypatch.setattr(processes, "os", type("OS", (), {"name": "posix"})())
+    assert hidden_subprocess_kwargs() == {}
+
+
+def test_git_text_hides_both_windows_revision_processes(tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        output = "refs/heads/main\n" if "symbolic-ref" in command else "abc123\n"
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(
+        revision,
+        "hidden_subprocess_kwargs",
+        lambda: {"creationflags": CREATE_NO_WINDOW},
+    )
+    monkeypatch.setattr(revision.subprocess, "run", fake_run)
+
+    git_revision(tmp_path)
+
+    assert [call[0][1:] for call in calls] == [
+        ["symbolic-ref", "--quiet", "HEAD"],
+        ["rev-parse", "--verify", "HEAD"],
+    ]
+    assert all(
+        kwargs["creationflags"] == CREATE_NO_WINDOW for _command, kwargs in calls
+    )
+
+
+def test_git_text_omits_creationflags_off_windows(tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(command, 0, " value \n", "")
+
+    monkeypatch.setattr(revision, "hidden_subprocess_kwargs", lambda: {})
+    monkeypatch.setattr(revision.subprocess, "run", fake_run)
+
+    assert revision._git_text(tmp_path, "rev-parse", "HEAD") == "value"
+    assert "creationflags" not in calls[0]
+
+
+def test_git_text_preserves_failure_handling(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(revision, "hidden_subprocess_kwargs", lambda: {})
+    monkeypatch.setattr(
+        revision.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 1, "ignored", ""
+        ),
+    )
+    assert revision._git_text(tmp_path, "rev-parse", "HEAD") is None
+
+    monkeypatch.setattr(
+        revision.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing git")),
+    )
+    assert revision._git_text(tmp_path, "rev-parse", "HEAD") is None
 
 
 def test_project_revision_is_stable_and_ignores_unregistered_files(tmp_path) -> None:

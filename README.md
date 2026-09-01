@@ -70,7 +70,7 @@ KFlow 不根据文件名或正文猜测关系。每条命令保存一次完整�
 
 ```bash
 kflow overview
-kflow ui
+kflow ui start
 ```
 
 实际阅读六个文件并确认关系正确后，逐个建立 Confirmation：
@@ -127,7 +127,9 @@ kflow review-order [NODE]
 kflow confirm NODE
 kflow validate
 
-kflow ui ...
+kflow ui start
+kflow ui stop
+kflow ui status
 ```
 
 四个查询入口各有一个明确职责：
@@ -158,19 +160,21 @@ kflow review-order architecture --json
 
 完整项目图保持 `schema_version: 2`，供程序化 Agent 适配器和 Human Interface 共享。按任务拆分的 `context`、`impact`、`review-order` 以及 CLI operation envelope 使用 query schema v3。Git 跟踪的 metadata schema 仍为 v2。具体字段见 [机器契约](docs/schema.md)。
 
-JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序和 validation issues，不包含正文、片段、自动摘要或 Prompt。除前台交互式 `ui` 外，其他公开命令支持把 `--json` 放在子命令前或后。
+JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序和 validation issues，不包含正文、片段、自动摘要或 Prompt。Human Interface 生命周期命令不支持 `--json`；其他公开命令支持把 `--json` 放在子命令前或后。
 
 ## Human Interface
 
 在已初始化的项目根目录运行：
 
 ```bash
-kflow ui
+kflow ui start
 kflow ui status
 kflow ui stop
 ```
 
-`kflow ui` 是 `kflow ui start` 的常用简写：它先通过 Core 公共查询确认当前目录已初始化，再在后台启动项目实例并打开浏览器；未初始化时退出码为 2，提示先运行 `kflow init`，并且不会创建运行记录、启动进程或打开浏览器。已有健康实例时直接复用，因此同一项目不会重复启动。命令启动成功后立即返回。不同项目拥有彼此独立的实例；`status` 显示当前项目的 URL、PID 与启动时间，`stop` 只关闭当前项目，二者在未初始化目录仍可安全运行。可用 `start --port 8765` 指定端口、`start --no-open` 禁止打开浏览器，或用 `start --foreground` 附着终端调试。
+`kflow ui start` 先通过 Core 公共查询确认当前目录已初始化，再在后台启动项目实例并默认打开浏览器；未初始化时退出码为 2，提示先运行 `kflow init`，并且不会创建运行记录、启动进程或打开浏览器。已有健康实例时直接复用，因此同一项目不会重复启动。命令启动成功后立即释放终端。不同项目拥有彼此独立的实例；`status` 显示当前项目的 URL、PID 与启动时间，`stop` 只关闭当前项目，二者在未初始化目录仍可安全运行。可用 `start --port 8765` 指定端口，或用 `start --no-open` 禁止打开浏览器。
+
+关闭浏览器不会自动停止后台服务；需要执行 `kflow ui stop` 才会停止。Windows 上，后台服务的 Git revision、Git History 和 Graph Diff 探针使用隐藏窗口的子进程，不会创建可见控制台窗口。
 
 服务只监听 `127.0.0.1`。运行记录位于用户级本机状态目录（Windows 为 `%LOCALAPPDATA%\KFlow\ui`，Linux/macOS 遵循 XDG state 目录或 `~/.local/state/kflow/ui`），按规范化项目根目录隔离；这些 PID、端口、随机实例身份和控制 token 不写入 `.kflow`，也不进入 Git。
 

@@ -12,6 +12,7 @@ from kflow.core.query import query_project_graph
 from kflow.core.scan import confirm
 from kflow.core.storage import initialize_project, load_graph, save_derivation
 from kflow.human import git_snapshot
+from kflow.human.processes import CREATE_NO_WINDOW
 from kflow.human.git_snapshot import (
     GitSnapshotError,
     graph_diff_against_head,
@@ -58,6 +59,28 @@ def _committed_project(root: Path, project_relative: str = "."):
     _git(root, "add", ".")
     _git(root, "commit", "-m", "baseline graph")
     return project, node_a, node_b
+
+
+def test_git_snapshot_process_uses_shared_hidden_window_options(
+    tmp_path, monkeypatch
+) -> None:
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, b"value", b"")
+
+    monkeypatch.setattr(
+        git_snapshot,
+        "hidden_subprocess_kwargs",
+        lambda: {"creationflags": CREATE_NO_WINDOW},
+    )
+    monkeypatch.setattr(git_snapshot.subprocess, "run", fake_run)
+
+    result = git_snapshot._run_git(tmp_path, "rev-parse", "HEAD")
+
+    assert result.stdout == b"value"
+    assert calls[0][1]["creationflags"] == CREATE_NO_WINDOW
 
 
 def test_head_snapshot_reports_commit_and_cleans_temporary_tree(tmp_path, monkeypatch):

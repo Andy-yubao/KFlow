@@ -265,7 +265,7 @@ def test_readme_contains_the_real_guided_quickstart_commands():
         "kflow context",
         "kflow impact",
         "kflow review-order",
-        "kflow ui",
+        "kflow ui start",
     )
 
     assert all(command in readme for command in required_commands)

@@ -36,7 +36,7 @@ Python Core
 ## 4. 运行流程
 
 ```text
-kflow ui start（kflow ui 为常用简写）
+kflow ui start
 → 确认当前工作目录
 → 通过 Core 公共项目图查询确认目录已初始化；失败时不创建运行记录、不启动进程、不打开浏览器
 → 读取用户级运行记录并通过 PID、端口和 health identity 核验实例
@@ -54,7 +54,7 @@ kflow ui start（kflow ui 为常用简写）
 → 用户在单页图和 Inspector 中只读查看项目
 ```
 
-同一规范化项目根只对应一个后台实例，不同项目可以并行运行。所有 start 形式（包括 `kflow ui`、`ui start --no-open` 和 `ui start --foreground`）都在任何运行时副作用前复用 Core 公共查询校验初始化状态；未初始化目录以退出码 2 提示运行 `kflow init`。`kflow ui status` 显示当前项目的运行状态、项目根、URL、PID 和启动时间；`kflow ui stop` 只关闭经身份核验的当前项目实例，重复 stop 返回简短 stopped 结果；status/stop 不要求项目仍处于初始化状态。`kflow ui start --foreground` 保留附着终端、按 `Ctrl+C` 关闭的调试入口。
+同一规范化项目根只对应一个后台实例，不同项目可以并行运行。`kflow ui start`（包括 `--no-open` 和 `--port` 形式）在任何运行时副作用前复用 Core 公共查询校验初始化状态；未初始化目录以退出码 2 提示运行 `kflow init`。start 始终在后台运行并在服务健康后立即释放终端。关闭浏览器不会停止后台服务，只有 `kflow ui stop` 才会停止它。`kflow ui status` 显示当前项目的运行状态、项目根、URL、PID 和启动时间；`kflow ui stop` 只关闭经身份核验的当前项目实例，重复 stop 返回简短 stopped 结果；status/stop 不要求项目仍处于初始化状态。
 
 运行状态位于用户级本机 state 目录：Windows 使用 `%LOCALAPPDATA%\KFlow\ui`，其他平台优先使用 `$XDG_STATE_HOME/kflow/ui`，否则使用 `~/.local/state/kflow/ui`。文件名是规范化项目根的稳定 SHA-256 键，内容包括 `project_root`、`pid`、`port`、`started_at`、随机 `instance_id` 和随机 `control_token`；相邻日志文件用于启动失败诊断。它们不写入 `.kflow`，不进入 Git。start/status/stop 不只检查 PID，还核对 loopback health 返回的服务名、项目根和实例 ID，因此陈旧状态、PID 复用、端口被其他程序占用或损坏 JSON 都不会误认或误杀别的进程。
 
@@ -126,12 +126,13 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 - `ui/node_modules/` 不进入 Git；`ui/package-lock.json` 进入 Git。
 - `kflow/human/static/` 是生成产物，不手动编辑；修改 `ui/` 后重新运行 production build。
 - wheel 与 sdist 必须包含 `index.html` 和 `assets/`。
-- 最终用户运行 `kflow ui` 不需要安装 Node.js。
+- 最终用户运行 `kflow ui start` 不需要安装 Node.js。
 
 ## 8. 本地服务边界
 
 - 固定绑定 `127.0.0.1`，默认使用操作系统分配的随机端口，不提供远程监听选项。
 - 后台子进程在 Windows 使用隐藏 detached process，在其他平台使用新 session；父进程必须等待匹配的 health identity 成功后才返回，失败时清理自己创建的子进程和状态。
+- 后台服务运行期的 Git revision、Git History 与 Graph Diff 子进程在 Windows 使用 `CREATE_NO_WINDOW`，不会创建可见控制台窗口；其他平台不传该 Windows 专用参数。
 - Human Interface 不修改 KFlow 元数据和项目文件。它允许有限的本地只读辅助动作，例如打开已经登记的文件。
 - 除受限的 `POST /api/open-file` 与带随机控制 token 的本机 `POST /api/shutdown` 外不提供 POST；未知 POST 和其他修改方法返回 405。服务没有账户、登录、认证或宽泛 CORS。
 - 静态文件只能来自 Python 包内的 `kflow/human/static/`，请求路径不能越出该目录。
@@ -139,7 +140,7 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 
 ## 9. 当前能力
 
-当前版本提供后台 start/status/stop 与可选前台调试、revision 自动更新、手动 Reload、单页面项目摘要、完整知识图、结构角色与 Layer、独立状态 badge、缩放、平移、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Graph Diff vs HEAD / selected structural commit、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open 和错误/空项目状态。正式桌面布局已收紧纵向高度：主画布占用可用高度，右侧面板在需要时滚动；窄屏继续使用响应式排列。
+当前版本提供后台 start/status/stop、revision 自动更新、手动 Reload、单页面项目摘要、完整知识图、结构角色与 Layer、独立状态 badge、缩放、平移、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Graph Diff vs HEAD / selected structural commit、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open 和错误/空项目状态。正式桌面布局已收紧纵向高度：主画布占用可用高度，右侧面板在需要时滚动；窄屏继续使用响应式排列。
 
 Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。悬停显示 `short` 的轻量 tooltip，单击后 Inspector 显示 ID、完整语义和全部输入输出角色。搜索有命中时只降低非命中上下文的透明度；没有任何 Node 或 Derivation 命中时保持图的正常不透明度，并在搜索框附近显示明确提示。状态与 needs-review 筛选仍独立控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
 

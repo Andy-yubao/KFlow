@@ -86,19 +86,13 @@ def test_start_reuses_one_verified_instance_and_opens_existing_url(
     assert opened == [existing.url]
 
 
-@pytest.mark.parametrize("foreground", [False, True])
 def test_start_rejects_uninitialized_project_before_any_side_effect(
-    tmp_path, monkeypatch, foreground
+    tmp_path, monkeypatch
 ) -> None:
     project = tmp_path / "not initialized"
     project.mkdir()
     state_dir = tmp_path / "user state"
     monkeypatch.setenv(runtime.STATE_DIRECTORY_ENV, str(state_dir))
-    monkeypatch.setattr(
-        runtime,
-        "run_ui",
-        lambda *_args, **_kwargs: pytest.fail("foreground server must not run"),
-    )
     monkeypatch.setattr(
         runtime.subprocess,
         "Popen",
@@ -114,7 +108,7 @@ def test_start_rejects_uninitialized_project_before_any_side_effect(
         RuntimeError,
         match=r"KFlow project is not initialized\. Run `kflow init` first\.",
     ):
-        runtime.start_ui(project, foreground=foreground)
+        runtime.start_ui(project)
 
     assert not state_dir.exists()
     assert not (project / ".kflow").exists()

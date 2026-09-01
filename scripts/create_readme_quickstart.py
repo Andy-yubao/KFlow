@@ -73,8 +73,8 @@ The API design leads to a local, packaged delivery model:
 
 - publish KFlow as a Python package;
 - bundle the built static assets inside that package;
-- launch the local interface with `kflow ui`;
-- bind the service to localhost and stop it with the foreground process;
+- launch the local interface with `kflow ui start`;
+- bind the background service to localhost and stop it with `kflow ui stop`;
 - require no Node.js installation from the end user.
 """,
 }

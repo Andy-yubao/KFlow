@@ -21,7 +21,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from kflow.core.query import query_project_graph
-from kflow.human.server import LOOPBACK_ADDRESS, SERVICE_NAME, create_ui_server, run_ui
+from kflow.human.processes import CREATE_NO_WINDOW
+from kflow.human.server import LOOPBACK_ADDRESS, SERVICE_NAME, create_ui_server
 
 
 START_TIMEOUT_SECONDS = 10.0
@@ -75,15 +76,10 @@ def start_ui(
     *,
     port: int = 0,
     open_browser: bool = True,
-    foreground: bool = False,
-) -> RuntimeState | None:
+) -> RuntimeState:
     """Start or reuse the current project's UI instance."""
     project_root = canonical_project_root(root)
     _require_initialized_project(project_root)
-    if foreground:
-        run_ui(project_root, port=port, open_browser=open_browser)
-        return None
-
     path = state_path(project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
@@ -145,7 +141,7 @@ def _spawn_background(
         popen_options["creationflags"] = (
             subprocess.CREATE_NEW_PROCESS_GROUP
             | subprocess.DETACHED_PROCESS
-            | subprocess.CREATE_NO_WINDOW
+            | CREATE_NO_WINDOW
         )
     else:
         popen_options["start_new_session"] = True

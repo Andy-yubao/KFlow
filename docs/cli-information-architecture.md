@@ -23,7 +23,9 @@ kflow review-order [NODE]
 kflow confirm NODE
 kflow validate
 
-kflow ui ...
+kflow ui start
+kflow ui stop
+kflow ui status
 ```
 
 四个查询命令各回答一个问题：

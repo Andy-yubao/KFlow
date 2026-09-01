@@ -185,9 +185,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ui_start = ui_commands.add_parser("start", help="Start or reuse the UI.")
     ui_commands.add_parser("stop", help="Stop this project's UI.")
     ui_commands.add_parser("status", help="Show this project's UI status.")
-    _add_ui_start_options(p_ui)
     _add_ui_start_options(p_ui_start)
     _add_json_option(p_ui)
+    p_ui.set_defaults(ui_parser=p_ui)
     return parser
 
 
@@ -200,11 +200,6 @@ def _add_ui_start_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--no-open", action="store_true", help="Do not open the browser automatically."
-    )
-    parser.add_argument(
-        "--foreground",
-        action="store_true",
-        help="Run attached to the terminal for debugging.",
     )
 
 
@@ -238,14 +233,16 @@ def main(argv=None) -> None:
     if args.command == "ui" and getattr(args, "json", False):
         parser.error("ui does not support --json")
     if args.command == "ui":
+        if args.ui_command is None:
+            args.ui_parser.print_help()
+            raise SystemExit(1)
         try:
-            action = args.ui_command or "start"
+            action = args.ui_command
             if action == "start":
                 start_ui(
                     Path.cwd(),
                     port=args.port,
                     open_browser=not args.no_open,
-                    foreground=args.foreground,
                 )
             elif action == "stop":
                 stop_ui(Path.cwd())

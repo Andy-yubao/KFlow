@@ -8,7 +8,6 @@ import subprocess
 import sys
 import threading
 import uuid
-import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -24,6 +23,7 @@ from kflow.human.git_snapshot import (
     unavailable_git_history,
 )
 from kflow.human.graph_diff import unavailable_graph_diff
+from kflow.human.processes import hidden_subprocess_kwargs
 from kflow.human.revision import RevisionTracker
 
 LOOPBACK_ADDRESS = "127.0.0.1"
@@ -48,25 +48,6 @@ def create_ui_server(
         control_token,
     )
     return ThreadingHTTPServer((LOOPBACK_ADDRESS, port), handler)
-
-
-def run_ui(root: Path, port: int = 0, open_browser: bool = True) -> None:
-    """Run the Human Interface in the foreground until interrupted."""
-    server = create_ui_server(root, port)
-    actual_port = server.server_address[1]
-    url = f"http://{LOOPBACK_ADDRESS}:{actual_port}/"
-    print(f"KFlow Human Interface: {url}", flush=True)
-    print("Press Ctrl+C to stop.", flush=True)
-
-    if open_browser:
-        webbrowser.open(url)
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
 
 
 def _handler_for(
@@ -404,7 +385,7 @@ def _open_registered_file(path: Path) -> None:
     command = (
         ["open", str(path)] if sys.platform == "darwin" else ["xdg-open", str(path)]
     )
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, **hidden_subprocess_kwargs())
 
 
 def _safe_static_path(request_path: str) -> PurePosixPath | None:

@@ -225,6 +225,8 @@ Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引
 
 Human Interface 后台实例的 PID、端口、项目绝对路径、启动时间、随机实例 ID、控制 token 和日志属于单机进程管理事实，保存在平台用户级 state 目录并按规范化项目根生成稳定键；它们不写入 `.kflow/runtime/`，不参与领域模型或 Git 历史。所有 UI start 路径先通过 Core 公共项目图查询校验初始化状态，再创建 state 目录、锁、进程或浏览器动作；status/stop 仍允许在未初始化目录执行。`.kflow/runtime/` 仍只是项目内可丢弃临时数据的保留目录。
 
+正式 Human Interface 生命周期只包含 `kflow ui start`、`kflow ui stop` 和 `kflow ui status`。start 始终后台运行，在 health identity 核验成功后立即释放终端；关闭浏览器不会停止服务，必须显式执行 stop。Windows 下后台进程及其运行期 Git 探针使用不创建可见控制台窗口的进程标志；Unix、Linux 与 macOS 不接收 Windows 专用参数。
+
 Human Interface 的 revision adapter 不维护第二份图。它对 `.kflow/project.json`、Node、Derivation、Confirmation 和当前公共项目图已登记路径建立确定顺序的 stat token，只包含规范路径、存在性、文件类型、大小与纳秒修改时间，不读取正文；Git token 只包含当前 symbolic ref 与 HEAD。首次建立范围或 `.kflow` 元数据 token 改变时，adapter 重新调用公共 `query_project_graph()` 更新登记路径集合，稳定轮询不调用 Git History、Graph Diff 或项目图查询。该机制是轮询优化而非持久化 watcher；若文件系统同时保持相同大小与相同纳秒修改时间，token 不承诺识别该变化。
 
 当前可靠性范围是单工作区、单写者。切换到任意 Git commit 后，应能仅凭该版本的规范元数据和项目文件重建拓扑与确认基线。
@@ -256,7 +258,7 @@ Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/pro
 - 固定关系类型枚举；
 - 级联确认；
 - 自动修改下游；
-- 远程 Web 服务、MCP Server、文件系统 watcher 或不受 `kflow ui start/status/stop` 管理的常驻服务；
+- 远程 Web 服务、MCP Server、文件系统 watcher 或不受正式 Human Interface 生命周期命令管理的常驻服务；
 - event sourcing、快照数据库或时间旅行引擎。
 
 未来集成必须建立在当前稳定事实、查询和机器契约之上，不得改变这些核心边界。

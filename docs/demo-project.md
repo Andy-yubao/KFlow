@@ -127,7 +127,7 @@ if ($registeredFiles -contains "notes/personal-note.md") {
 启动正式打包界面：
 
 ```powershell
-kflow ui
+kflow ui start
 ```
 
 在 Graph Diff 面板中人工检查：

@@ -19,6 +19,7 @@ from kflow.human.graph_diff import (
     compare_project_graphs,
     unavailable_graph_diff,
 )
+from kflow.human.processes import hidden_subprocess_kwargs
 
 
 GIT_HISTORY_SCHEMA_VERSION = 1
@@ -319,6 +320,7 @@ def _run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:
             check=False,
             capture_output=True,
             shell=False,
+            **hidden_subprocess_kwargs(),
         )
     except FileNotFoundError as error:
         raise GitSnapshotError("Git is not installed or is not available.") from error

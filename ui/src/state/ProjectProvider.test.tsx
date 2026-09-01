@@ -369,4 +369,60 @@ describe("ProjectProvider Graph Diff history requests", () => {
     expect(screen.getByLabelText("initial error").textContent).toBe("none");
     expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1);
   });
+
+  it("ignores an old Reload Graph Diff result after a newer Reload succeeds", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectProvider>
+        <Probe />
+      </ProjectProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("loaded diff").textContent).toBe("HEAD"),
+    );
+
+    const firstDiff = deferred<GraphDiffResult>();
+    api.fetchProjectGraph.mockReset()
+      .mockResolvedValueOnce({ schema_version: 2, marker: "reload-a" })
+      .mockResolvedValueOnce({ schema_version: 2, marker: "reload-b" });
+    api.fetchReviewOrder.mockReset()
+      .mockResolvedValueOnce({ review_order: ["nd_reload_a"] })
+      .mockResolvedValueOnce({ review_order: ["nd_reload_b"] });
+    api.fetchGitHistory.mockReset().mockResolvedValue(history());
+    api.fetchGraphDiff.mockReset()
+      .mockImplementationOnce(() => firstDiff.promise)
+      .mockResolvedValueOnce(diff("HEAD"));
+    api.fetchRevision.mockReset().mockResolvedValue({
+      ok: true,
+      project_revision: "project-b",
+      git_revision: "git-b",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(api.fetchGraphDiff).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByLabelText("project marker").textContent).toBe(
+        "reload-b",
+      ),
+    );
+    expect(screen.getByLabelText("review order").textContent).toBe(
+      "nd_reload_b",
+    );
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+
+    await act(async () => {
+      firstDiff.resolve(diff("HEAD"));
+      await firstDiff.promise;
+    });
+
+    expect(screen.getByLabelText("project marker").textContent).toBe(
+      "reload-b",
+    );
+    expect(screen.getByLabelText("review order").textContent).toBe(
+      "nd_reload_b",
+    );
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+  });
 });

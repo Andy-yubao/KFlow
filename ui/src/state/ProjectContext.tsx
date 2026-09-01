@@ -333,7 +333,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (hadGraph) dispatch({ type: "reloadFailed", message });
       }
       if (!isCurrent()) return;
-      if (!(await loadGraphDiff(base))) {
+      const diffSucceeded = await loadGraphDiff(base);
+      if (!isCurrent()) return;
+      if (!diffSucceeded) {
         refreshFailed = true;
         if (hadGraph) {
           dispatch({

@@ -223,7 +223,9 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 Node、Derivation 和 Confirmation 分文件保存，是规范真相源。索引、反向引用、邻接、状态与 review order 均为派生数据。
 
-Human Interface 后台实例的 PID、端口、项目绝对路径、启动时间、随机实例 ID、控制 token 和日志属于单机进程管理事实，保存在平台用户级 state 目录并按规范化项目根生成稳定键；它们不写入 `.kflow/runtime/`，不参与领域模型或 Git 历史。`.kflow/runtime/` 仍只是项目内可丢弃临时数据的保留目录。
+Human Interface 后台实例的 PID、端口、项目绝对路径、启动时间、随机实例 ID、控制 token 和日志属于单机进程管理事实，保存在平台用户级 state 目录并按规范化项目根生成稳定键；它们不写入 `.kflow/runtime/`，不参与领域模型或 Git 历史。所有 UI start 路径先通过 Core 公共项目图查询校验初始化状态，再创建 state 目录、锁、进程或浏览器动作；status/stop 仍允许在未初始化目录执行。`.kflow/runtime/` 仍只是项目内可丢弃临时数据的保留目录。
+
+Human Interface 的 revision adapter 不维护第二份图。它对 `.kflow/project.json`、Node、Derivation、Confirmation 和当前公共项目图已登记路径建立确定顺序的 stat token，只包含规范路径、存在性、文件类型、大小与纳秒修改时间，不读取正文；Git token 只包含当前 symbolic ref 与 HEAD。首次建立范围或 `.kflow` 元数据 token 改变时，adapter 重新调用公共 `query_project_graph()` 更新登记路径集合，稳定轮询不调用 Git History、Graph Diff 或项目图查询。该机制是轮询优化而非持久化 watcher；若文件系统同时保持相同大小与相同纳秒修改时间，token 不承诺识别该变化。
 
 当前可靠性范围是单工作区、单写者。切换到任意 Git commit 后，应能仅凭该版本的规范元数据和项目文件重建拓扑与确认基线。
 

@@ -38,6 +38,7 @@ Python Core
 ```text
 kflow ui start（kflow ui 为常用简写）
 → 确认当前工作目录
+→ 通过 Core 公共项目图查询确认目录已初始化；失败时不创建运行记录、不启动进程、不打开浏览器
 → 读取用户级运行记录并通过 PID、端口和 health identity 核验实例
 → 已有健康实例时复用，否则在 127.0.0.1 的随机空闲端口启动后台服务
 → health 通过后输出本地 URL、默认打开浏览器并立即返回
@@ -53,7 +54,7 @@ kflow ui start（kflow ui 为常用简写）
 → 用户在单页图和 Inspector 中只读查看项目
 ```
 
-同一规范化项目根只对应一个后台实例，不同项目可以并行运行。`kflow ui status` 显示当前项目的运行状态、项目根、URL、PID 和启动时间；`kflow ui stop` 只关闭经身份核验的当前项目实例，重复 stop 返回简短 stopped 结果。`kflow ui start --foreground` 保留附着终端、按 `Ctrl+C` 关闭的调试入口。
+同一规范化项目根只对应一个后台实例，不同项目可以并行运行。所有 start 形式（包括 `kflow ui`、`ui start --no-open` 和 `ui start --foreground`）都在任何运行时副作用前复用 Core 公共查询校验初始化状态；未初始化目录以退出码 2 提示运行 `kflow init`。`kflow ui status` 显示当前项目的运行状态、项目根、URL、PID 和启动时间；`kflow ui stop` 只关闭经身份核验的当前项目实例，重复 stop 返回简短 stopped 结果；status/stop 不要求项目仍处于初始化状态。`kflow ui start --foreground` 保留附着终端、按 `Ctrl+C` 关闭的调试入口。
 
 运行状态位于用户级本机 state 目录：Windows 使用 `%LOCALAPPDATA%\KFlow\ui`，其他平台优先使用 `$XDG_STATE_HOME/kflow/ui`，否则使用 `~/.local/state/kflow/ui`。文件名是规范化项目根的稳定 SHA-256 键，内容包括 `project_root`、`pid`、`port`、`started_at`、随机 `instance_id` 和随机 `control_token`；相邻日志文件用于启动失败诊断。它们不写入 `.kflow`，不进入 Git。start/status/stop 不只检查 PID，还核对 loopback health 返回的服务名、项目根和实例 ID，因此陈旧状态、PID 复用、端口被其他程序占用或损坏 JSON 都不会误认或误杀别的进程。
 
@@ -74,9 +75,9 @@ POST /api/shutdown
 
 `GET /api/health` 返回服务名、规范化项目根和随机实例 ID，供显式生命周期命令核验身份。`POST /api/shutdown` 只接受运行记录中的随机控制 token；token 不进入静态页面或其他浏览器响应，接口只关闭当前 loopback 服务。
 
-`GET /api/revision` 返回不透明的 `project_revision` 与 `git_revision`。前者确定性覆盖 `.kflow/project.json`、Node、Derivation、Confirmation 和公共项目图已登记的正文文件；后者覆盖当前分支身份、HEAD 与结构提交列表。服务只在内存中保留公共查询返回的登记路径集来确定监测范围，不缓存第二份项目图，不复制 Core 的 status、impact 或 review-order 算法。无关未登记文件不改变核心 token。
+`GET /api/revision` 返回不透明的 `project_revision` 与 `git_revision`。前者按规范相对路径的确定顺序覆盖 `.kflow/project.json`、Node、Derivation、Confirmation 和公共项目图已登记文件的存在性、文件类型、`st_size` 与 `st_mtime_ns`；稳定轮询不读取登记文件正文。后者只覆盖 `git symbolic-ref HEAD` 与 `git rev-parse HEAD` 的轻量结果，不执行 Git History 查询。服务只在内存中保留公共查询返回的登记路径集来确定监测范围，不缓存第二份项目图；首次 revision 请求可以建立范围，之后只在 `.kflow` 元数据状态 token 改变时再次调用 `query_project_graph()`，以纳入新增登记路径并移除已删除 Node 的路径。无关未登记文件不改变项目 token，项目外符号链接只记录为不安全状态而不读取目标正文。
 
-`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。未初始化、文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达。
+`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达；正常 CLI 生命周期不会为未初始化目录启动这个 HTTP 服务。
 
 `GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 或 `<project-relative-path>/.kflow/derivations/` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。仓库相对路径使用 literal Git pathspec，因此目录中的空格、中文和 pathspec 元字符不会扩大匹配范围。confirmation-only commit 和普通正文提交不进入列表。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
 
@@ -113,7 +114,7 @@ Knowledge Node 主体边框和顶部结构条使用低疲劳色系表达角色�
 
 前端在页面可见时约每秒请求 revision，隐藏时降为约五秒，重新聚焦时立即检查；请求自调度且不重叠，连续变化在刷新前短暂 debounce。只有 token 改变才请求实际数据：项目 token 刷新 Project Graph、Review Order 与当前 Graph Diff；Git token 刷新 Git History 与 Graph Diff。手动 Reload 忽略 token 缓存并完整刷新四类数据，再更新 revision 基线。
 
-自动与手动刷新都保留旧图、搜索、状态筛选、Only needs review、面板折叠、仍存在的选择、仍有效的历史基准和当前 viewport；实体消失时清除选择，历史 SHA 消失时回退 HEAD。自动刷新不显示首次加载式 Loading、不自动 fitView；失败只显示非阻塞错误。统一的 AbortController、reload generation 和 Graph Diff 单调 request ID 防止自动刷新、Reload 与快速历史切换之间的旧响应覆盖。
+自动与手动刷新都保留旧图、搜索、状态筛选、Only needs review、面板折叠、仍存在的选择、仍有效的历史基准和当前 viewport；实体消失时清除选择，历史 SHA 消失时回退 HEAD。首次核心加载失败使用阻塞错误页和 Reload；已有图上的手动失败只显示 `Reload failed`；轮询或自动数据刷新失败只显示非阻塞的 `Automatic update temporarily unavailable`。自动错误在下一次成功 revision 检查（即使 token 未变化）、成功自动刷新或成功手动 Reload 后清除，手动错误只由下一次成功手动 Reload 清除。统一的 AbortController、reload generation 和 Graph Diff 单调 request ID 防止自动刷新、Reload 与快速历史切换之间的旧响应或旧错误覆盖；取消请求和组件卸载不派发错误。
 
 ## 7. 前端源码与构建产物
 

@@ -63,7 +63,9 @@ describe("projectReducer", () => {
       requestId: 0,
     });
     expect(failed.projectGraph).toBe(graph);
-    expect(failed.error).toBeNull();
+    expect(failed.initialLoadError).toBeNull();
+    expect(failed.reloadError).toBeNull();
+    expect(failed.automaticRefreshError).toBeNull();
     expect(failed.graphDiffError).toBe("Git unavailable");
   });
 
@@ -110,7 +112,42 @@ describe("projectReducer", () => {
     });
     expect(loaded.gitHistory).toBe(history);
     expect(loaded.selectedGraphDiffBase).toBe("HEAD");
-    expect(loaded.error).toBeNull();
+    expect(loaded.initialLoadError).toBeNull();
+    expect(loaded.reloadError).toBeNull();
+    expect(loaded.automaticRefreshError).toBeNull();
+  });
+
+  it("keeps initial, manual, and automatic refresh failures independent", () => {
+    const initialFailure = projectReducer(initialProjectState, {
+      type: "initialLoadFailed",
+      message: "initial",
+    });
+    const manualFailure = projectReducer(initialFailure, {
+      type: "reloadFailed",
+      message: "manual",
+    });
+    const automaticFailure = projectReducer(manualFailure, {
+      type: "automaticRefreshFailed",
+      message: "automatic",
+    });
+
+    expect(automaticFailure.initialLoadError).toBe("initial");
+    expect(automaticFailure.reloadError).toBe("manual");
+    expect(automaticFailure.automaticRefreshError).toBe("automatic");
+
+    const automaticRecovered = projectReducer(automaticFailure, {
+      type: "automaticRefreshSucceeded",
+    });
+    expect(automaticRecovered.initialLoadError).toBe("initial");
+    expect(automaticRecovered.reloadError).toBe("manual");
+    expect(automaticRecovered.automaticRefreshError).toBeNull();
+
+    const manuallyRecovered = projectReducer(automaticFailure, {
+      type: "reloadSucceeded",
+    });
+    expect(manuallyRecovered.initialLoadError).toBeNull();
+    expect(manuallyRecovered.reloadError).toBeNull();
+    expect(manuallyRecovered.automaticRefreshError).toBeNull();
   });
 
   it("preserves an existing selection and clears only a removed entity", () => {

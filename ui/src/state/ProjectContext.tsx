@@ -40,7 +40,9 @@ export interface ProjectState {
   graphDiffError: string | null;
   graphDiffRequestId: number;
   loading: boolean;
-  error: string | null;
+  initialLoadError: string | null;
+  reloadError: string | null;
+  automaticRefreshError: string | null;
   selectedElement: SelectedElement;
   searchText: string;
   statusFilter: StatusFilter;
@@ -61,7 +63,11 @@ export type ProjectAction =
   | { type: "graphDiffLoading"; base: string; requestId: number }
   | { type: "graphDiffLoaded"; result: GraphDiffResult; requestId: number }
   | { type: "graphDiffFailed"; message: string; requestId: number }
-  | { type: "failed"; message: string }
+  | { type: "initialLoadFailed"; message: string }
+  | { type: "reloadFailed"; message: string }
+  | { type: "reloadSucceeded" }
+  | { type: "automaticRefreshFailed"; message: string }
+  | { type: "automaticRefreshSucceeded" }
   | { type: "selected"; element: SelectedElement }
   | { type: "reviewSelected"; nodeId: string }
   | { type: "graphDiffSelected"; element: Exclude<SelectedElement, null> }
@@ -83,7 +89,9 @@ export const initialProjectState: ProjectState = {
   graphDiffError: null,
   graphDiffRequestId: 0,
   loading: true,
-  error: null,
+  initialLoadError: null,
+  reloadError: null,
+  automaticRefreshError: null,
   selectedElement: null,
   searchText: "",
   statusFilter: "all",
@@ -101,7 +109,6 @@ export function projectReducer(
       return {
         ...state,
         loading: true,
-        error: null,
         gitHistoryLoading: true,
         gitHistoryError: null,
         graphDiffError: null,
@@ -112,7 +119,7 @@ export function projectReducer(
         projectGraph: action.graph,
         reviewOrder: action.reviewOrder,
         loading: false,
-        error: null,
+        initialLoadError: null,
         selectedElement: selectionStillExists(
           action.graph,
           state.selectedElement,
@@ -157,8 +164,22 @@ export function projectReducer(
         graphDiffLoading: false,
         graphDiffError: action.message,
       };
-    case "failed":
-      return { ...state, loading: false, error: action.message };
+    case "initialLoadFailed":
+      return { ...state, loading: false, initialLoadError: action.message };
+    case "reloadFailed":
+      return { ...state, loading: false, reloadError: action.message };
+    case "reloadSucceeded":
+      return {
+        ...state,
+        loading: false,
+        initialLoadError: null,
+        reloadError: null,
+        automaticRefreshError: null,
+      };
+    case "automaticRefreshFailed":
+      return { ...state, automaticRefreshError: action.message };
+    case "automaticRefreshSucceeded":
+      return { ...state, automaticRefreshError: null };
     case "selected":
       return { ...state, selectedElement: action.element };
     case "reviewSelected":
@@ -225,6 +246,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const reloadController = useRef<AbortController | null>(null);
   const revisionController = useRef<AbortController | null>(null);
   const revisionBaseline = useRef<RevisionResult | null>(null);
+  const projectGraphRef = useRef<ProjectGraphResult | null>(null);
 
   const loadGraphDiff = useCallback(async (base: string): Promise<boolean> => {
     selectedBase.current = base;
@@ -248,6 +270,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reload = useCallback(async () => {
+    const hadGraph = projectGraphRef.current !== null;
     const generation = ++reloadGeneration.current;
     reloadController.current?.abort();
     graphDiffController.current?.abort();
@@ -267,13 +290,17 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           fetchReviewOrder(controller.signal),
         ]);
         if (!isCurrent()) return;
+        projectGraphRef.current = graph;
         dispatch({ type: "loaded", graph, reviewOrder: review.review_order });
       } catch (error: unknown) {
         if (!isCurrent()) return;
         refreshFailed = true;
         const message =
           error instanceof Error ? error.message : "Unknown network error.";
-        dispatch({ type: "failed", message });
+        dispatch({
+          type: hadGraph ? "reloadFailed" : "initialLoadFailed",
+          message,
+        });
       }
     })();
 
@@ -303,21 +330,37 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           error instanceof Error ? error.message : "Unknown Git history error.";
         selectedBase.current = "HEAD";
         dispatch({ type: "gitHistoryFailed", message });
+        if (hadGraph) dispatch({ type: "reloadFailed", message });
       }
       if (!isCurrent()) return;
-      if (!(await loadGraphDiff(base))) refreshFailed = true;
+      if (!(await loadGraphDiff(base))) {
+        refreshFailed = true;
+        if (hadGraph) {
+          dispatch({
+            type: "reloadFailed",
+            message: "Graph Diff refresh failed.",
+          });
+        }
+      }
     })();
 
     await Promise.all([coreRequest, historyRequest]);
     if (!isCurrent() || refreshFailed) return;
     try {
-      revisionBaseline.current = await fetchRevision(controller.signal);
+      const nextRevision = await fetchRevision(controller.signal);
+      if (!isCurrent()) return;
+      revisionBaseline.current = nextRevision;
     } catch (error: unknown) {
       if (!isCurrent()) return;
       const message =
         error instanceof Error ? error.message : "Unknown revision error.";
-      dispatch({ type: "failed", message });
+      dispatch({
+        type: hadGraph ? "reloadFailed" : "automaticRefreshFailed",
+        message,
+      });
+      return;
     }
+    if (isCurrent()) dispatch({ type: "reloadSucceeded" });
   }, [loadGraphDiff]);
 
   const refreshAutomatically = useCallback(
@@ -343,6 +386,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 fetchReviewOrder(controller.signal),
               ]);
               if (!isCurrent()) return;
+              projectGraphRef.current = graph;
               dispatch({
                 type: "loaded",
                 graph,
@@ -355,7 +399,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 error instanceof Error
                   ? error.message
                   : "Unknown automatic refresh error.";
-              dispatch({ type: "failed", message });
+              dispatch({ type: "automaticRefreshFailed", message });
             }
           })()
         : Promise.resolve();
@@ -389,23 +433,39 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 ? error.message
                 : "Unknown Git history error.";
             dispatch({ type: "gitHistoryFailed", message });
+            dispatch({ type: "automaticRefreshFailed", message });
           }
         }
         if (!isCurrent()) return;
-        if (!(await loadGraphDiff(selectedBase.current))) refreshFailed = true;
+        if (!(await loadGraphDiff(selectedBase.current))) {
+          refreshFailed = true;
+          if (isCurrent()) {
+            dispatch({
+              type: "automaticRefreshFailed",
+              message: "Graph Diff refresh failed.",
+            });
+          }
+        }
       })();
 
       await Promise.all([coreRequest, historyAndDiffRequest]);
       if (!isCurrent() || refreshFailed) return;
       if (projectChanged) {
         try {
-          revisionBaseline.current = await fetchRevision(controller.signal);
-        } catch {
-          if (isCurrent()) revisionBaseline.current = nextRevision;
+          const currentRevision = await fetchRevision(controller.signal);
+          if (!isCurrent()) return;
+          revisionBaseline.current = currentRevision;
+        } catch (error: unknown) {
+          if (!isCurrent()) return;
+          const message =
+            error instanceof Error ? error.message : "Unknown revision error.";
+          dispatch({ type: "automaticRefreshFailed", message });
+          return;
         }
       } else {
         revisionBaseline.current = nextRevision;
       }
+      if (isCurrent()) dispatch({ type: "automaticRefreshSucceeded" });
     },
     [loadGraphDiff],
   );
@@ -439,6 +499,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       try {
         const next = await fetchRevision(controller.signal);
         if (disposed || controller.signal.aborted) return;
+        dispatch({ type: "automaticRefreshSucceeded" });
         const previous = revisionBaseline.current;
         if (previous === null) {
           revisionBaseline.current = next;
@@ -461,7 +522,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             error instanceof Error
               ? error.message
               : "Unknown automatic update error.";
-          dispatch({ type: "failed", message });
+          dispatch({ type: "automaticRefreshFailed", message });
         }
       } finally {
         if (revisionController.current === controller) {

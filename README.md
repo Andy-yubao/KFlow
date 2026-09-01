@@ -170,11 +170,11 @@ kflow ui status
 kflow ui stop
 ```
 
-`kflow ui` 是 `kflow ui start` 的常用简写：它在后台启动当前项目的实例并打开浏览器；已有健康实例时直接复用，因此同一项目不会重复启动。命令启动成功后立即返回。不同项目拥有彼此独立的实例；`status` 显示当前项目的 URL、PID 与启动时间，`stop` 只关闭当前项目。可用 `start --port 8765` 指定端口、`start --no-open` 禁止打开浏览器，或用 `start --foreground` 附着终端调试。
+`kflow ui` 是 `kflow ui start` 的常用简写：它先通过 Core 公共查询确认当前目录已初始化，再在后台启动项目实例并打开浏览器；未初始化时退出码为 2，提示先运行 `kflow init`，并且不会创建运行记录、启动进程或打开浏览器。已有健康实例时直接复用，因此同一项目不会重复启动。命令启动成功后立即返回。不同项目拥有彼此独立的实例；`status` 显示当前项目的 URL、PID 与启动时间，`stop` 只关闭当前项目，二者在未初始化目录仍可安全运行。可用 `start --port 8765` 指定端口、`start --no-open` 禁止打开浏览器，或用 `start --foreground` 附着终端调试。
 
 服务只监听 `127.0.0.1`。运行记录位于用户级本机状态目录（Windows 为 `%LOCALAPPDATA%\KFlow\ui`，Linux/macOS 遵循 XDG state 目录或 `~/.local/state/kflow/ui`），按规范化项目根目录隔离；这些 PID、端口、随机实例身份和控制 token 不写入 `.kflow`，也不进入 Git。
 
-界面保持只读，并通过轻量 revision polling 自动感知已登记正文、KFlow 元数据、Confirmation 与 Git HEAD/结构历史变化；只有 token 变化时才安静刷新实际数据。手动 Reload 会忽略当前 revision 基线并强制完整同步，两种方式都保留合理的筛选、选择、历史基准和 viewport。
+界面保持只读，并通过轻量 revision polling 自动感知已登记正文、KFlow 元数据、Confirmation、当前 Git 分支与 HEAD 变化。稳定轮询只探测规范路径的存在性、类型、大小和纳秒修改时间，不读取正文、不列 Git 历史；只有首次建立登记范围或 `.kflow` 元数据变化时才通过公共项目图查询刷新范围，token 变化时才安静刷新实际数据。手动 Reload 会忽略当前 revision 基线并强制完整同步，两种方式都保留合理的筛选、选择、历史基准和 viewport。首次加载、手动 Reload 与自动更新错误彼此隔离；自动错误是非阻塞提示，并在下一次成功探测或刷新后自动消退。
 
 Knowledge Node 主体视觉表达可重建的结构角色：Source（无 producer、有 consumer）、Intermediate（两者都有）、Terminal（有 producer、无 consumer）和 Isolated（两者都无）。Source/Isolated 为 L0；派生 Node 的 Layer 等于 producing Derivation 全部输入 Node 的最大 Layer 加一。Current、Needs review、Unknown 状态改由小面积文字 badge 表达，与结构颜色分离。当前领域模型没有 Knowledge Category，界面不会根据路径或文件名猜测类别。
 

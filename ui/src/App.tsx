@@ -20,7 +20,14 @@ function ReloadButton({ busy = false }: { busy?: boolean }) {
 
 export default function App() {
   const { state } = useProject();
-  const { projectGraph, loading, error, selectedElement } = state;
+  const {
+    projectGraph,
+    loading,
+    initialLoadError,
+    reloadError,
+    automaticRefreshError,
+    selectedElement,
+  } = state;
   const view = useMemo(
     () =>
       projectGraph === null
@@ -50,12 +57,12 @@ export default function App() {
     );
   }
 
-  if (error && projectGraph === null) {
+  if (initialLoadError && projectGraph === null) {
     return (
       <main className="centered-state error-state" role="alert">
         <span className="error-symbol" aria-hidden="true">!</span>
         <h1>Unable to load the project graph</h1>
-        <p>{error}</p>
+        <p>{initialLoadError}</p>
         <ReloadButton />
       </main>
     );
@@ -87,7 +94,16 @@ export default function App() {
           </ul>
         </section>
       )}
-      {error && <div className="inline-error" role="alert">Reload failed: {error}</div>}
+      {reloadError && (
+        <div className="inline-error" role="alert">
+          Reload failed: {reloadError}
+        </div>
+      )}
+      {automaticRefreshError && (
+        <div className="inline-error" role="status">
+          Automatic update temporarily unavailable: {automaticRefreshError}
+        </div>
+      )}
       <div className="workspace">
         <GraphCanvas graph={projectGraph} view={view} />
         <div className="side-panels">

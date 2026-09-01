@@ -5,6 +5,7 @@ import json
 import pytest
 
 from kflow.cli import build_parser, main
+from kflow.human import runtime
 
 
 def test_ui_parser_accepts_port_and_no_open() -> None:
@@ -59,6 +60,49 @@ def test_ui_stop_and_status_dispatch_without_starting(tmp_path, monkeypatch) -> 
     main(["ui", "stop"])
 
     assert calls == [("status", tmp_path), ("stop", tmp_path)]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["ui"],
+        ["ui", "start"],
+        ["ui", "start", "--no-open"],
+        ["ui", "start", "--foreground", "--no-open"],
+    ],
+)
+def test_ui_start_forms_reject_uninitialized_directory_without_side_effects(
+    tmp_path, monkeypatch, capsys, arguments
+) -> None:
+    state_dir = tmp_path / "user state"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(runtime.STATE_DIRECTORY_ENV, str(state_dir))
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("must not spawn"),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "run_ui",
+        lambda *_args, **_kwargs: pytest.fail("must not run foreground server"),
+    )
+    monkeypatch.setattr(
+        runtime.webbrowser,
+        "open",
+        lambda *_args, **_kwargs: pytest.fail("must not open browser"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(arguments)
+
+    assert exit_info.value.code == 2
+    assert "Run `kflow init` first." in capsys.readouterr().err
+    assert not state_dir.exists()
+    assert not (tmp_path / ".kflow").exists()
+
+    main(["init", str(tmp_path)])
+    assert (tmp_path / ".kflow" / "project.json").is_file()
 
 
 @pytest.mark.parametrize("arguments", [["ui", "--json"], ["--json", "ui"]])

@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from kflow.core.query import query_project_graph
 from kflow.human.server import LOOPBACK_ADDRESS, SERVICE_NAME, create_ui_server, run_ui
 
 
@@ -78,6 +79,7 @@ def start_ui(
 ) -> RuntimeState | None:
     """Start or reuse the current project's UI instance."""
     project_root = canonical_project_root(root)
+    _require_initialized_project(project_root)
     if foreground:
         run_ui(project_root, port=port, open_browser=open_browser)
         return None
@@ -99,6 +101,13 @@ def start_ui(
             port=port,
             open_browser=open_browser,
         )
+
+
+def _require_initialized_project(root: Path) -> None:
+    """Reject invalid storage before creating any local runtime state."""
+    result = query_project_graph(root)
+    if any(issue.get("code") == "invalid_project" for issue in result["issues"]):
+        raise RuntimeError("KFlow project is not initialized. Run `kflow init` first.")
 
 
 def _spawn_background(

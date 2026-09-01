@@ -97,8 +97,6 @@ def _handler_for(
                 self._send_json(result)
                 return
             if path == "/api/revision":
-                if not revision_tracker.observed:
-                    revision_tracker.observe_project_graph(query_project_graph(root))
                 self._send_json(revision_tracker.result())
                 return
             if path == "/api/review-order":

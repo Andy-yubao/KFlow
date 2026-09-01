@@ -1,7 +1,7 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectProvider } from "./ProjectContext";
+import { ProjectProvider, useProject } from "./ProjectContext";
 
 const api = vi.hoisted(() => ({
   fetchProjectGraph: vi.fn(),
@@ -18,6 +18,34 @@ const firstRevision = {
   project_revision: "project-1",
   git_revision: "git-1",
 };
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function PollingProbe() {
+  const { state, reload } = useProject();
+  return (
+    <div>
+      <output aria-label="initial error">
+        {state.initialLoadError ?? "none"}
+      </output>
+      <output aria-label="reload error">{state.reloadError ?? "none"}</output>
+      <output aria-label="automatic error">
+        {state.automaticRefreshError ?? "none"}
+      </output>
+      <button type="button" onClick={() => void reload()}>
+        Reload
+      </button>
+    </div>
+  );
+}
 
 async function settle() {
   await act(async () => {
@@ -169,7 +197,121 @@ describe("ProjectProvider revision polling", () => {
         derivations: [],
         topological_order: [],
       });
-    const rendered = render(<ProjectProvider><div /></ProjectProvider>);
+    const rendered = render(<ProjectProvider><PollingProbe /></ProjectProvider>);
+    await settle();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+    expect(api.fetchProjectGraph).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText("automatic error").textContent).toBe(
+      "temporary failure",
+    );
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+    expect(api.fetchProjectGraph).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText("automatic error").textContent).toBe("none");
+    rendered.unmount();
+  });
+
+  it("clears a polling error after the next unchanged successful check", async () => {
+    api.fetchRevision
+      .mockResolvedValueOnce(firstRevision)
+      .mockRejectedValueOnce(new Error("poll unavailable"))
+      .mockResolvedValue(firstRevision);
+    const rendered = render(<ProjectProvider><PollingProbe /></ProjectProvider>);
+    await settle();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByLabelText("automatic error").textContent).toBe(
+      "poll unavailable",
+    );
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByLabelText("automatic error").textContent).toBe("none");
+    rendered.unmount();
+  });
+
+  it("clears an automatic error after a successful manual reload", async () => {
+    api.fetchRevision
+      .mockResolvedValueOnce(firstRevision)
+      .mockRejectedValueOnce(new Error("poll unavailable"))
+      .mockResolvedValue(firstRevision);
+    const rendered = render(<ProjectProvider><PollingProbe /></ProjectProvider>);
+    await settle();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByLabelText("automatic error").textContent).toBe(
+      "poll unavailable",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await settle();
+    expect(screen.getByLabelText("automatic error").textContent).toBe("none");
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+    rendered.unmount();
+  });
+
+  it("shows a manual failure only as Reload failed and clears it on success", async () => {
+    api.fetchProjectGraph
+      .mockResolvedValueOnce({
+        ok: true,
+        schema_version: 2,
+        nodes: [],
+        derivations: [],
+        topological_order: [],
+      })
+      .mockRejectedValueOnce(new Error("manual failure"))
+      .mockResolvedValue({
+        ok: true,
+        schema_version: 2,
+        nodes: [],
+        derivations: [],
+        topological_order: [],
+      });
+    const rendered = render(<ProjectProvider><PollingProbe /></ProjectProvider>);
+    await settle();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await settle();
+    expect(screen.getByLabelText("reload error").textContent).toBe(
+      "manual failure",
+    );
+    expect(screen.getByLabelText("automatic error").textContent).toBe("none");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await settle();
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+    rendered.unmount();
+  });
+
+  it("does not let an aborted old automatic failure overwrite manual success", async () => {
+    const currentGraph = {
+      ok: true,
+      schema_version: 2,
+      nodes: [],
+      derivations: [],
+      topological_order: [],
+    };
+    const staleAutomaticGraph = deferred<typeof currentGraph>();
+    api.fetchRevision
+      .mockResolvedValueOnce(firstRevision)
+      .mockResolvedValue({ ...firstRevision, project_revision: "project-2" });
+    api.fetchProjectGraph
+      .mockResolvedValueOnce(currentGraph)
+      .mockImplementationOnce(() => staleAutomaticGraph.promise)
+      .mockResolvedValue(currentGraph);
+    const rendered = render(<ProjectProvider><PollingProbe /></ProjectProvider>);
     await settle();
 
     await act(async () => {
@@ -177,10 +319,17 @@ describe("ProjectProvider revision polling", () => {
     });
     expect(api.fetchProjectGraph).toHaveBeenCalledTimes(2);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1200);
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await settle();
     expect(api.fetchProjectGraph).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
+
+    await act(async () => {
+      staleAutomaticGraph.reject(new Error("stale automatic failure"));
+      await Promise.allSettled([staleAutomaticGraph.promise]);
+    });
+    expect(screen.getByLabelText("automatic error").textContent).toBe("none");
+    expect(screen.getByLabelText("reload error").textContent).toBe("none");
     rendered.unmount();
   });
 

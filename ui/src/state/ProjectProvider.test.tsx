@@ -95,7 +95,11 @@ function Probe() {
       <output aria-label="history loading">{String(state.gitHistoryLoading)}</output>
       <output aria-label="history error">{state.gitHistoryError ?? "none"}</output>
       <output aria-label="core loading">{String(state.loading)}</output>
-      <output aria-label="core error">{state.error ?? "none"}</output>
+      <output aria-label="initial error">{state.initialLoadError ?? "none"}</output>
+      <output aria-label="reload error">{state.reloadError ?? "none"}</output>
+      <output aria-label="automatic error">
+        {state.automaticRefreshError ?? "none"}
+      </output>
       <button type="button" onClick={() => selectGraphDiffBase(firstCommit)}>
         Select first
       </button>
@@ -167,7 +171,7 @@ describe("ProjectProvider Graph Diff history requests", () => {
     );
     expect(screen.getByLabelText("project marker").textContent).toBe("core");
     expect(screen.getByLabelText("review order").textContent).toBe("nd_core");
-    expect(screen.getByLabelText("core error").textContent).toBe("none");
+    expect(screen.getByLabelText("initial error").textContent).toBe("none");
     expect(screen.getByLabelText("history error").textContent).toBe(
       "History unavailable",
     );
@@ -362,7 +366,7 @@ describe("ProjectProvider Graph Diff history requests", () => {
     expect(screen.getByLabelText("selected base").textContent).toBe(secondCommit);
     expect(screen.getByLabelText("loaded diff").textContent).toBe(secondCommit);
     expect(screen.getByLabelText("core loading").textContent).toBe("false");
-    expect(screen.getByLabelText("core error").textContent).toBe("none");
+    expect(screen.getByLabelText("initial error").textContent).toBe("none");
     expect(api.fetchGraphDiff).toHaveBeenCalledTimes(1);
   });
 });

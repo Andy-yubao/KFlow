@@ -8,11 +8,14 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import pytest
+
 from kflow.core.operations import add_node
 from kflow.core.query import query_project_graph, query_review_order
 from kflow.core.scan import confirm
 from kflow.core.storage import initialize_project
 from kflow.human import server as human_server
+from kflow.human import revision as human_revision
 from kflow.human.server import create_ui_server
 
 
@@ -91,6 +94,60 @@ def test_revision_endpoint_is_stable_until_registered_content_changes(tmp_path) 
     assert changed["ok"] is True
     assert changed["project_revision"] != first["project_revision"]
     assert changed["git_revision"] == first["git_revision"]
+
+
+def test_first_revision_request_establishes_scope_without_project_request(
+    tmp_path, monkeypatch
+) -> None:
+    registered = tmp_path / "registered.md"
+    registered.write_text("registered", encoding="utf-8")
+    initialize_project(tmp_path)
+    add_node(tmp_path, "registered", ("registered.md",))
+    original_query = human_revision.query_project_graph
+    calls = []
+
+    def counted_query(root):
+        calls.append(root)
+        return original_query(root)
+
+    monkeypatch.setattr(human_revision, "query_project_graph", counted_query)
+    with running_ui(tmp_path) as (_server, base_url):
+        first = get_json(f"{base_url}/api/revision")
+        second = get_json(f"{base_url}/api/revision")
+
+    assert first == second
+    assert calls == [tmp_path.resolve()]
+
+
+def test_steady_revision_endpoint_does_not_read_files_or_run_expensive_queries(
+    tmp_path, monkeypatch
+) -> None:
+    registered = tmp_path / "registered.md"
+    registered.write_text("registered", encoding="utf-8")
+    initialize_project(tmp_path)
+    add_node(tmp_path, "registered", ("registered.md",))
+
+    with running_ui(tmp_path) as (_server, base_url):
+        get_json(f"{base_url}/api/project")
+        first = get_json(f"{base_url}/api/revision")
+        monkeypatch.setattr(
+            Path,
+            "read_bytes",
+            lambda _path: pytest.fail("revision endpoint must not read contents"),
+        )
+        monkeypatch.setattr(
+            human_revision,
+            "query_project_graph",
+            lambda _root: pytest.fail("steady revision must not query the graph"),
+        )
+        monkeypatch.setattr(
+            human_server,
+            "query_git_history",
+            lambda *_args, **_kwargs: pytest.fail(
+                "revision endpoint must not query Git history"
+            ),
+        )
+        assert get_json(f"{base_url}/api/revision") == first
 
 
 def test_shutdown_requires_the_matching_control_token(tmp_path) -> None:

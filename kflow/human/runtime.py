@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -351,11 +352,42 @@ def _pid_is_alive(pid: int) -> bool:
         return False
     if os.name == "nt":
         return _windows_pid_is_alive(pid)
+    return _posix_pid_is_alive(pid)
+
+
+def _posix_pid_is_alive(pid: int) -> bool:
+    """Return whether a POSIX process is running, reaping an exited child."""
+    try:
+        waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        pass
+    except OSError as error:
+        if error.errno not in {errno.ECHILD, errno.EINTR}:
+            return False
+    else:
+        if waited_pid == pid:
+            return False
+
+    if sys.platform.startswith("linux") and _linux_process_is_zombie(pid):
+        return False
     try:
         os.kill(pid, 0)
     except OSError:
         return False
     return True
+
+
+def _linux_process_is_zombie(pid: int) -> bool:
+    """Detect a zombie that is not a child, as can happen under container PID 1."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    closing_parenthesis = stat.rfind(")")
+    if closing_parenthesis < 0:
+        return False
+    fields = stat[closing_parenthesis + 1 :].split()
+    return bool(fields) and fields[0] == "Z"
 
 
 def _windows_pid_is_alive(pid: int) -> bool:

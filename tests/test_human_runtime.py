@@ -3,6 +3,7 @@
 import json
 import os
 import socket
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -177,6 +178,22 @@ def test_pid_probe_distinguishes_current_and_missing_process() -> None:
     assert runtime._pid_is_alive(2_147_483_647) is False
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process lifecycle only")
+def test_pid_probe_reaps_an_exited_child() -> None:
+    process = runtime.subprocess.Popen(
+        [sys.executable, "-c", "pass"],
+        stdin=runtime.subprocess.DEVNULL,
+        stdout=runtime.subprocess.DEVNULL,
+        stderr=runtime.subprocess.DEVNULL,
+    )
+    deadline = runtime.time.monotonic() + 2.0
+
+    while runtime.time.monotonic() < deadline and runtime._pid_is_alive(process.pid):
+        runtime.time.sleep(0.01)
+
+    assert runtime._pid_is_alive(process.pid) is False
+
+
 def test_real_background_instances_reuse_per_project_and_separate_projects(
     tmp_path, monkeypatch
 ) -> None:
@@ -207,6 +224,17 @@ def test_real_background_instances_reuse_per_project_and_separate_projects(
         assert second.pid != first.pid
         assert runtime.inspect_ui(first_project) == first
         assert runtime.inspect_ui(second_project) == second
+
+        assert runtime.stop_ui(second_project) is True
+        second = None
+        assert runtime.inspect_ui(second_project) is None
+        assert runtime.stop_ui(second_project) is False
+        assert runtime.inspect_ui(first_project) == first
+
+        assert runtime.stop_ui(first_project) is True
+        first = None
+        assert runtime.inspect_ui(first_project) is None
+        assert runtime.stop_ui(first_project) is False
     finally:
         if second is not None:
             runtime.stop_ui(second_project)

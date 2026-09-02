@@ -10,6 +10,20 @@ Quickstart Part 2 是可选的下一阶段。`scripts/setup_git_quickstart_demo.
 
 本文的完整 Demo 面向 Human Interface 开发和高级人工验收。它会自动构造多个 Git 结构提交、Graph Diff 基线和有意保留的未提交变化，以覆盖 Added / Removed / Changed Node 与 Derivation。它不替代基础 Quickstart，也不需要随普通 README 修改自动重构。
 
+## Fresh Clone 人工验收工具
+
+维护者要从远端待测分支创建全新的干净副本时，可在 KFlow 仓库根目录运行：
+
+```powershell
+python scripts/clone_test_repo.py --root E:\project
+```
+
+也可以在 Windows Explorer 中双击 `scripts\clone_test_repo.cmd`。包装脚本会保留窗口以显示结果或错误，但不会自动启动 UI。
+
+工具默认读取当前分支和 `origin`，先确认同名分支已经 push，再以 `KFlow-test-<branch>-<timestamp>` 创建独立 clone。`--branch main` 可覆盖分支；`--destination-root` 是 `--root` 的等价长参数。目标根目录按显式参数、`KFLOW_TEST_CLONE_ROOT`、Windows 上已存在的 `E:\project`、当前仓库父目录依次选择。已有目标不会被覆盖或删除。
+
+source 工作树有本地变化时只给出 warning，因为 fresh clone 始终只包含远端已 push 的内容；远端没有所选分支时会明确失败，不会回退到 `main`。该工具只用于仓库开发与人工验收，不属于 `kflow` 公共 CLI。
+
 ## Quickstart Part 2 Git Demo
 
 默认建议位置位于仓库外：

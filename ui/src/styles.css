@@ -65,27 +65,6 @@ h1, h2, h3, p { margin-top: 0; }
   min-height: 36px; border: 1px solid #bbc6c0; border-radius: 7px; padding: 7px 11px;
   color: #33483e; background: white; cursor: pointer;
 }
-.graph-legend {
-  display: flex; align-items: center; gap: 7px 10px; min-width: 0; margin-left: auto;
-  color: #59665f; font-size: 9px;
-  white-space: nowrap; overflow-x: auto;
-}
-.graph-legend strong { color: #435149; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
-.legend-role::before, .legend-status::before {
-  content: ""; display: inline-block; width: 10px; height: 6px; margin-right: 4px;
-  border: 2px solid; border-radius: 2px; vertical-align: 0;
-}
-.legend-role.source::before { border-color: #6f98b8; background: #eaf2f8; }
-.legend-role.intermediate::before { border-color: #7e879f; background: #eff0f5; }
-.legend-role.terminal::before { border-color: #477d82; background: #e7f1f1; }
-.legend-role.isolated::before { border-color: #929b96; border-style: dashed; background: #f3f4f3; }
-.legend-derivation { color: #655a99; }
-.legend-divider { width: 1px; height: 15px; background: #d9dfdb; }
-.legend-status::before { width: 7px; height: 7px; border: 0; border-radius: 50%; }
-.legend-status.current::before { background: #3f8a66; }
-.legend-status.attention::before { background: #c67b2d; }
-.legend-status.unknown::before { background: #89938d; }
-
 .workspace { flex: 1; min-height: 610px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; }
 .graph-canvas, .graph-empty, .inspector {
   border: 1px solid #d2dad5; border-radius: 14px; background: #fbfcfa; overflow: hidden;
@@ -104,17 +83,16 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .graph-node.selected { outline: 3px solid rgb(68 128 98 / 25%); }
 /* These fixed dimensions must match the Dagre constants in layoutGraph.ts. */
-.knowledge-node { position: relative; width: 240px; height: 120px; border-width: 2px; }
+.knowledge-node {
+  position: relative; width: 240px; height: 120px; border-width: 2px;
+  border-color: var(--role-border-color); background: var(--role-background);
+}
 .knowledge-node::before {
   content: ""; position: absolute; inset: 0 0 auto; height: 5px; border-radius: 8px 8px 0 0;
   background: var(--role-color);
 }
-.knowledge-node.role-source { --role-color: #6f98b8; border-color: #91aec4; background: #fcfdfe; }
-.knowledge-node.role-intermediate { --role-color: #7e879f; border-color: #a3a9b8; background: #fdfdfe; }
-.knowledge-node.role-terminal { --role-color: #477d82; border-color: #77a0a3; background: #fbfdfd; }
-.knowledge-node.role-isolated {
-  --role-color: #929b96; border-color: #9da5a1; border-style: dashed; background: #fcfcfc;
-}
+.knowledge-node.role-isolated { border-style: dashed; }
+.knowledge-node .node-kicker { color: var(--role-text-color); }
 .knowledge-node:focus-visible { outline: 3px solid rgb(61 108 143 / 32%); outline-offset: 3px; }
 .derivation-node {
   position: relative; display: grid; place-items: center; width: 32px; height: 32px;
@@ -334,7 +312,6 @@ h1, h2, h3, p { margin-top: 0; }
   .toolbar { align-items: flex-start; gap: 12px; }
   .graph-toolbar { align-items: stretch; flex-direction: column; }
   .search-control, .filter-control { width: 100%; }
-  .graph-legend { width: 100%; margin-left: 0; padding-top: 8px; border-top: 1px solid #e3e8e4; }
   .side-panels { grid-template-columns: 1fr; }
   .issues-banner { grid-template-columns: 1fr; }
 }

@@ -1,12 +1,44 @@
 # KFlow Human Interface Demo 项目
 
-本文记录 Human Interface 人工验证项目的位置、维护边界和可复制的 Graph Diff Demo 教程。后续收到“更新 Demo”任务时，应先阅读本文。
+本文记录 Quickstart Git Demo 与完整 Human Interface 人工验证项目的位置、维护边界和构造方式。后续收到“更新 Demo”任务时，应先阅读本文。
 
 ## 与 README Quickstart 的分工
 
-README Quickstart 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`add-node`、`derive` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播。
+README Quickstart Part 1 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`add-node`、`derive` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播；它不要求 Git 仓库。
+
+Quickstart Part 2 是可选的下一阶段。`scripts/setup_git_quickstart_demo.py` 一次性创建独立的真实 Git 仓库、三个结构提交、可选择的历史基准和有意保留的工作树变化，用于低成本体验 Git-backed UI。它不是生产 CLI，也不替代 Part 1。
 
 本文的完整 Demo 面向 Human Interface 开发和高级人工验收。它会自动构造多个 Git 结构提交、Graph Diff 基线和有意保留的未提交变化，以覆盖 Added / Removed / Changed Node 与 Derivation。它不替代基础 Quickstart，也不需要随普通 README 修改自动重构。
+
+## Quickstart Part 2 Git Demo
+
+默认建议位置位于仓库外：
+
+```text
+../KFlow-git-quickstart-demo
+```
+
+从 KFlow 仓库根目录运行：
+
+```powershell
+python scripts/setup_git_quickstart_demo.py ../KFlow-git-quickstart-demo
+Set-Location ../KFlow-git-quickstart-demo
+kflow ui start
+```
+
+构造器复用正式 KnowledgeGraph、storage、confirm、validate、Project Graph、Review Order、Git History 与 Graph Diff 实现，不提供 fake Git 结果，也不新增 bulk-create CLI。它使用固定提交身份与时间，拒绝覆盖已有目录，并自动验证：
+
+- 三个真实结构提交及 `HEAD~1`、`HEAD~2`；
+- `requirements → api-design + testing-plan` 的 1→N；
+- `api-design + security-constraints → deployment-plan` 的 N→1；
+- `deployment-plan → release-checklist` 的 1→1；
+- Source、Intermediate、Terminal 和工作树中的 Isolated `research-notes`；
+- `requirements.md` 的未提交上游内容变化，以及由正式状态算法产生的 6 个 Needs review；
+- 非空 Review Order、可用 Graph Diff vs HEAD 和两个可用历史比较。
+
+最终工作树非 clean 是刻意设计：Graph Diff vs HEAD 显示未提交的 `research-notes` 结构 Node，正文变化则让 requirements 及其下游进入 Review Order。不要在演示前提交或清理它们。结束后使用 `kflow ui stop`。
+
+下面的完整 Graph Diff Demo 是另一套更深入的开发验收场景，继续用于覆盖 Added / Removed / Changed 的全部结构差异。
 
 ## 默认位置与维护边界
 

@@ -110,7 +110,7 @@ KnowledgeNode → DerivationNode → KnowledgeNode
 
 Source 与 Isolated 为 L0。派生 Node 的 Layer 是 producing Derivation 的全部 input Node Layer 的最大值加一；该递归定义直接覆盖 1-to-1、1-to-N、N-to-1、N-to-M、分叉与合流，不用数组下标猜层级。
 
-Knowledge Node 主体边框和顶部结构条使用低疲劳色系表达角色；Isolated 使用灰色虚线。当前三态使用独立的小面积 badge，同时带符号、文字和颜色：`✓ Current`、`! Needs review`、`? Unknown`。状态不再占据整张卡片主边框，项目无效仍由页面级 Validation banner 表达。Derivation 保持紫色小连接点，图例同时用文字列出全部结构角色、Derivation 和三种状态。当前领域模型没有 Knowledge Category，展示层不从目录、扩展名或文件名猜测。
+Knowledge Node 主体使用浅色 card、结构色边框与顶部结构条表达角色：Source 为蓝、Intermediate 为紫、Terminal 为 teal、Isolated 为灰色虚线；卡片内继续直接显示角色与 Layer。当前三态使用独立的小面积 badge，同时带符号、文字和颜色：`✓ Current`、`! Needs review`、`? Unknown`。状态不占据整张卡片主边框，项目无效仍由页面级 Validation banner 表达。Derivation 保持紫色小连接点。顶部控制区不再重复展示 STRUCTURE / STATUS 图例，只保留搜索、筛选和选择操作。当前领域模型没有 Knowledge Category，展示层不从目录、扩展名或文件名猜测。
 
 前端在页面可见时约每秒请求 revision，隐藏时降为约五秒，重新聚焦时立即检查；请求自调度且不重叠，连续变化在刷新前短暂 debounce。只有 token 改变才请求实际数据：项目 token 刷新 Project Graph、Review Order 与当前 Graph Diff；Git token 刷新 Git History 与 Graph Diff。手动 Reload 忽略 token 缓存并完整刷新四类数据，再更新 revision 基线。
 

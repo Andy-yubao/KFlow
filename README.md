@@ -33,7 +33,11 @@ kflow --help
 
 ## Quickstart
 
-### 1. 创建六个普通示例文件
+### Part 1 — Basic Project Graph
+
+这一部分是第一次体验 KFlow 的低门槛路径，不要求当前目录是 Git 仓库。你将亲手建立一个小型项目图，打开 Human UI，并体验基础查询与 review order。
+
+#### 1. 创建六个普通示例文件
 
 在 KFlow 仓库根目录运行：
 
@@ -44,7 +48,7 @@ cd kflow-quickstart
 
 PowerShell 可将第二行写成 `Set-Location kflow-quickstart`。脚本只创建六个示例文件，不初始化 KFlow、不创建 Git 仓库，也不覆盖已有目录。
 
-### 2. 初始化并登记 Node
+#### 2. 初始化并登记 Node
 
 ```bash
 kflow init
@@ -56,7 +60,7 @@ kflow add-node testing-plan --file docs/testing-plan.md
 kflow add-node deployment-plan --file docs/deployment-plan.md
 ```
 
-### 3. 声明完整 Derivation
+#### 3. 声明完整 Derivation
 
 ```bash
 kflow derive --short "需求与约束形成架构" --input requirements "提供产品目标" --input constraints "提供运行边界" --output architecture "形成系统结构"
@@ -66,7 +70,7 @@ kflow derive --short "接口设计形成部署方案" --input api-design "提供
 
 KFlow 不根据文件名或正文猜测关系。每条命令保存一次完整推导，因此多输入和多输出的原子语义不会丢失。
 
-### 4. 查看结构并建立确认基线
+#### 4. 查看结构并建立确认基线
 
 ```bash
 kflow overview
@@ -84,7 +88,7 @@ kflow confirm testing-plan
 kflow confirm deployment-plan
 ```
 
-### 5. 修改上游并处理 review order
+#### 5. 修改上游并处理 review order
 
 编辑 `docs/requirements.md` 后，无需先运行同步命令，直接查询当前文件事实：
 
@@ -111,6 +115,41 @@ kflow validate
 ```
 
 此时应看到 `Review scope is clear.` 和 `KFlow metadata is valid.`。
+
+### Part 2 — Git-backed History Demo（可选）
+
+完成基本体验后，可以用一个独立的真实 Git 仓库继续体验结构历史、Graph Diff、Needs review 和 Review Order。这不是首次启动 KFlow 的必要步骤，也不会改变 Part 1 项目。
+
+在 KFlow 仓库根目录运行：
+
+```bash
+python scripts/setup_git_quickstart_demo.py ../KFlow-git-quickstart-demo
+cd ../KFlow-git-quickstart-demo
+kflow ui start
+```
+
+PowerShell 可将第二行写成 `Set-Location ../KFlow-git-quickstart-demo`。构造脚本只属于 quickstart/demo tooling；它不会增加 `kflow bulk-create` 或其他批量创建类公共 CLI，也拒绝覆盖已有目标目录。
+
+脚本会创建三个确定的结构提交，依次建立 Source、1→N、N→1、1→1 与多层 DAG。最终工作树会故意保留 `docs/requirements.md` 的上游内容修改，以及一个未提交的 Isolated Node，因此不要在体验前提交或清理这些变化。
+
+打开界面后可以直接验证：
+
+- 顶部摘要显示 6 个 Nodes 需要 review，右侧 Review Order 已有真实结果；
+- Graph Diff vs HEAD 正常显示新增的 `research-notes` Node，不出现 Git repository error；
+- 历史选择器包含两个更早的结构提交，分别对应 `HEAD~1` 和 `HEAD~2`；
+- 主图同时包含 Source、Intermediate、Terminal 与 Isolated，并覆盖 1→1、1→N、N→1。
+
+也可以在终端核对真实状态：
+
+```bash
+git log --oneline -3
+git rev-parse HEAD HEAD~1 HEAD~2
+git status --short
+kflow overview --status
+kflow review-order
+```
+
+体验结束后运行 `kflow ui stop`。更完整、覆盖 Added / Removed / Changed 结构的开发验收场景见 [Human Interface Demo](docs/demo-project.md)。
 
 ## 公开命令
 

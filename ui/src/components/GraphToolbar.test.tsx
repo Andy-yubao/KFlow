@@ -33,21 +33,15 @@ function view(searchActive: boolean, searchMatchCount: number): GraphView {
 }
 
 describe("GraphToolbar search feedback", () => {
-  it("shows complete text legends for structure and status", () => {
+  it("keeps actionable controls without duplicate structure or status legends", () => {
     render(<GraphToolbar view={view(false, 0)} />);
-    const legend = screen.getByLabelText("Graph legend");
-    for (const label of [
-      "Source",
-      "Intermediate",
-      "Terminal",
-      "Isolated",
-      "Derivation",
-      "Current",
-      "Needs review",
-      "Unknown",
-    ]) {
-      expect(legend.textContent).toContain(label);
-    }
+
+    expect(screen.getByRole("searchbox")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Only needs review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear selection" })).toBeTruthy();
+    expect(screen.queryByLabelText("Graph legend")).toBeNull();
+    expect(screen.queryByText("Structure")).toBeNull();
   });
 
   it("shows the no-match message only for an active search with zero results", async () => {

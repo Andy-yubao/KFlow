@@ -269,3 +269,19 @@ def test_readme_contains_the_real_guided_quickstart_commands():
     )
 
     assert all(command in readme for command in required_commands)
+
+
+def test_readme_keeps_basic_quickstart_first_and_git_demo_optional():
+    readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+
+    part_one = readme.index("### Part 1 — Basic Project Graph")
+    part_two = readme.index("### Part 2 — Git-backed History Demo（可选）")
+    public_commands = readme.index("## 公开命令")
+
+    assert part_one < part_two < public_commands
+    assert "不要求当前目录是 Git 仓库" in readme[part_one:part_two]
+    assert "python scripts/setup_git_quickstart_demo.py" in readme[part_two:]
+    assert "HEAD~1" in readme[part_two:]
+    assert "HEAD~2" in readme[part_two:]
+    assert "kflow ui start" in readme[part_two:]
+    assert "bulk-create" in readme[part_two:]

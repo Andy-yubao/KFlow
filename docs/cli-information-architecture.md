@@ -57,12 +57,12 @@ Derivation 内的 inputs 和 outputs 均按 Node 拓扑位置排序。默认文�
 
 ## 4. 标准 Derivation 文本格式
 
-Derivation 始终作为不可拆分的多输入、多输出活动展示。一个区块先列出全部 inputs，再显示 Derivation short，最后列出全部 outputs：
+Derivation 始终作为不可拆分的多输入、多输出活动展示。一个区块先列出全部 inputs，再显示 `Derivation name — short`，最后列出全部 outputs。Derivation name 是默认文本暴露的正式可寻址名称，可直接用于后续 `kflow derivation edit/remove`：
 
 ```text
 requirements — project requirements [selected]
 constraints  — design constraints
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture — system architecture
 ```
 
@@ -70,7 +70,7 @@ constraints  — design constraints
 
 ```text
 architecture — component boundaries
-  └─ Design interfaces and verification
+  └─ interface-design — Design interfaces and verification
      ├─→ api-design — API contract
      └─→ test-plan — verification plan
 ```
@@ -86,11 +86,11 @@ KFlow project: 6 nodes, 3 derivations
 
 requirements — docs/requirements.md
 constraints  — docs/constraints.md
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture — docs/architecture.md
 
 architecture — docs/architecture.md
-  └─ Design interfaces and verification
+  └─ interface-design — Design interfaces and verification
      ├─→ api-design — docs/api.md
      └─→ test-plan — docs/tests.md
 ```
@@ -111,7 +111,7 @@ Need review: 5 nodes
 
 requirements [files changed] — docs/requirements.md
 constraints — docs/constraints.md
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture [input changed] — docs/architecture.md
 ```
 
@@ -138,13 +138,13 @@ Produced by:
 
 requirements [files changed] — project requirements
 constraints — design constraints
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture [input changed] — system architecture
 
 Used by:
 
 architecture [input changed] — system architecture
-  └─ Design interfaces and verification
+  └─ interface-design — Design interfaces and verification
      ├─→ api-design [input changed] — API contract
      └─→ test-plan [input changed] — verification plan
 ```
@@ -162,7 +162,7 @@ Direct derivations
 
 requirements — project requirements [selected]
 constraints  — design constraints
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture — system architecture
 
 Further downstream, in topological order
@@ -253,25 +253,25 @@ KFlow metadata is invalid.
 ```text
 # 1-to-1
 api-design
-  └─ Implement the service
+  └─ service-implementation — Implement the service
      → implementation
 
 # 1-to-N
 architecture
-  └─ Design interfaces and verification
+  └─ interface-design — Design interfaces and verification
      ├─→ api-design
      └─→ test-plan
 
 # N-to-1
 requirements
 constraints
-  └─ Define system architecture
+  └─ architecture-design — Define system architecture
      → architecture
 
 # N-to-M
 requirements
 constraints
-  └─ Plan delivery
+  └─ plan-delivery — Plan delivery
      ├─→ implementation-plan
      └─→ verification-plan
 ```

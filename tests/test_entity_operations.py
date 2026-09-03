@@ -280,3 +280,20 @@ def test_schema_v2_and_v3_derivation_without_name_are_rejected(tmp_path):
     )
     with pytest.raises(ValueError, match="missing required field: name"):
         load_graph(tmp_path)
+
+
+def test_node_add_and_edit_return_and_persist_canonical_file_order(tmp_path):
+    for path in ("docs/z.md", "docs/a.md", "docs/m.md"):
+        _write(tmp_path, path)
+    initialize_project(tmp_path)
+
+    added = add_node(tmp_path, "node", ("docs/z.md", "docs/a.md"))
+    assert added.files == ("docs/a.md", "docs/z.md")
+    assert load_graph(tmp_path).nodes[added.id].files == ("docs/a.md", "docs/z.md")
+
+    edited = edit_node(tmp_path, "node", name="node", files=("docs/z.md", "docs/m.md"))
+    assert edited.files == ("docs/m.md", "docs/z.md")
+    assert load_graph(tmp_path).nodes[edited.id].files == ("docs/m.md", "docs/z.md")
+
+    with pytest.raises(ValueError, match="duplicate paths"):
+        add_node(tmp_path, "other", ("docs/a.md", "docs/a.md"))

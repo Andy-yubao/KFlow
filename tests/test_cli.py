@@ -111,6 +111,9 @@ def test_overview_uses_topological_derivations_without_ids_or_default_status(
         < text.index("Design interfaces and verification")
         < text.index("Implement the service")
     )
+    assert "architecture-design — Define system architecture" in text
+    assert "interface-design — Design interfaces and verification" in text
+    assert "service-implementation — Implement the service" in text
     assert "Standalone nodes\n\nglossary — docs/glossary.md" in text
     assert "Need review:" not in text
     assert "[unconfirmed]" not in text
@@ -153,7 +156,7 @@ def test_overview_preserves_complete_many_to_many_derivation(
         "\n"
         "a — docs/a.md\n"
         "b — docs/b.md\n"
-        "  └─ Combine inputs\n"
+        "  └─ combine-inputs — Combine inputs\n"
         "     ├─→ c — docs/c.md\n"
         "     └─→ d — docs/d.md\n"
     )
@@ -190,6 +193,7 @@ def test_context_impact_and_review_order_have_distinct_human_outputs(
     context = capsys.readouterr().out
     assert context.startswith("architecture [input changed]")
     assert "Produced by:" in context and "Used by:" in context
+    assert "architecture-design — Define system architecture" in context
     assert "project requirements" in context and "design constraints" in context
     assert "implementation" not in context
     assert "Recommended review order" not in context
@@ -197,6 +201,7 @@ def test_context_impact_and_review_order_have_distinct_human_outputs(
     main(["impact", "requirements"])
     impact = capsys.readouterr().out
     assert impact.startswith("Impact from: requirements")
+    assert "architecture-design — Define system architecture" in impact
     assert "requirements — project requirements [selected]" in impact
     assert "constraints — design constraints" in impact
     assert "Further downstream, in topological order" in impact
@@ -209,6 +214,60 @@ def test_context_impact_and_review_order_have_distinct_human_outputs(
     assert "1. requirements — files changed\n   docs/requirements.md" in review
     assert "constraints" not in review
     assert "Derivation" not in review
+
+
+def test_default_queries_expose_derivation_name_and_short(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """overview / context / impact all show the standard `name — short` heading."""
+    monkeypatch.chdir(tmp_path)
+    prepare_cli_graph(tmp_path)
+
+    for arguments in (
+        ("overview",),
+        ("context", "architecture"),
+        ("impact", "requirements"),
+    ):
+        main([*arguments])
+        text = capsys.readouterr().out
+        assert "architecture-design — Define system architecture" in text
+        assert "Define system architecture" in text  # short never dropped for name
+
+
+def test_default_overview_name_is_a_derivation_edit_selector(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The name shown in default text is directly accepted by `derivation edit`."""
+    monkeypatch.chdir(tmp_path)
+    prepare_cli_graph(tmp_path)
+
+    main(["overview"])
+    text = capsys.readouterr().out
+    assert "architecture-design — Define system architecture" in text
+
+    main(
+        [
+            "derivation",
+            "edit",
+            "architecture-design",
+            "--name",
+            "architecture-design",
+            "--short",
+            "Define system architecture",
+            "--input",
+            "requirements",
+            "project requirements",
+            "--input",
+            "constraints",
+            "design constraints",
+            "--output",
+            "architecture",
+            "system architecture",
+        ]
+    )
+    edited = capsys.readouterr().out
+    assert "Edited Derivation: architecture-design" in edited
+    assert "unknown Derivation name" not in edited
 
 
 def test_confirm_names_the_next_formal_review_item(

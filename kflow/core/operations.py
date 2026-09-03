@@ -25,7 +25,7 @@ from kflow.core.storage import (
 def add_node(root: Path, name: str, files: tuple[str, ...]) -> KnowledgeNode:
     """Register existing project files as one source Node."""
     graph = load_graph(root)
-    normalized = tuple(_normalize_existing_file(root, path) for path in files)
+    normalized = tuple(sorted(_normalize_existing_file(root, path) for path in files))
     node = KnowledgeNode(_new_id("nd", graph.nodes), name, normalized)
     KnowledgeGraph.build((*graph.nodes.values(), node), graph.derivations.values())
     save_node(root, node)
@@ -69,7 +69,7 @@ def edit_node(
     """Replace one Node definition by exact old name while preserving its ID."""
     graph = load_graph(root)
     current = _node_by_name(graph, old_name)
-    normalized = tuple(_normalize_existing_file(root, path) for path in files)
+    normalized = tuple(sorted(_normalize_existing_file(root, path) for path in files))
     replacement = KnowledgeNode(current.id, name, normalized)
     candidate_nodes = tuple(
         replacement if node.id == current.id else node for node in graph.nodes.values()

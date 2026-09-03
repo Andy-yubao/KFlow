@@ -718,6 +718,11 @@ def _print_validation(result: dict) -> None:
     _print_issues(result["issues"])
 
 
+def _derivation_label(derivation: dict) -> str:
+    """Human-readable Derivation heading combining its formal name and short."""
+    return f"{derivation['name']} — {derivation['short']}"
+
+
 def _print_derivation(
     derivation: dict,
     *,
@@ -735,7 +740,7 @@ def _print_derivation(
     ]
     for label in input_labels:
         print(label)
-    print(f"  └─ {derivation['short']}")
+    print(f"  └─ {_derivation_label(derivation)}")
     output_labels = [
         _format_role(role, descriptor, nodes, include_status, selected_id)
         for role in outputs

@@ -1,5 +1,6 @@
 import json
 
+from kflow.cli import main
 from kflow.core.graph import KnowledgeGraph
 from kflow.core.models import (
     Derivation,
@@ -114,3 +115,17 @@ def test_context_source_and_terminal_have_explicit_empty_sides(tmp_path) -> None
     assert [node["name"] for node in source["nodes"]] == ["source"]
     assert terminal["producing_derivation"]["id"] == "dv_e_g"
     assert terminal["consumer_derivations"] == []
+
+
+def test_context_default_text_exposes_derivation_name_and_short(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    prepare_local_graph(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    main(["context", "c"])
+    text = capsys.readouterr().out
+
+    assert "combine-a-b — Combine A and B" in text
+    assert "use-c-for-e — Use C for E" in text
+    assert "use-c-d-for-f — Use C and D for F" in text

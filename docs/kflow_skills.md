@@ -40,7 +40,8 @@ Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 2. 对派生 Node 同时检查 producer 与直接输入条件；
 3. 完成真实判断和必要验证后，单独确认该 Node；
 4. 新 Node 只登记值得长期保存来源与影响的完整文件；
-5. 新 Derivation 必须保存一次完整 N-to-M 语义。
+5. 新 Derivation 必须保存一次完整 N-to-M 语义；
+6. 已登记实体定义变化使用 `node edit` / `derivation edit` 完整替换，失效关系使用 `remove`，不另建重名实体。
 
 ## 禁止行为
 

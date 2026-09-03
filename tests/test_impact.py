@@ -1,3 +1,4 @@
+from kflow.cli import main
 from kflow.core.graph import KnowledgeGraph
 from kflow.core.models import (
     Derivation,
@@ -93,3 +94,16 @@ def test_impact_with_no_consumer_has_no_downstream_sections(tmp_path) -> None:
     assert result["direct_derivations"] == []
     assert result["direct_outputs"] == []
     assert result["further_downstream"] == []
+
+
+def test_impact_default_text_exposes_derivation_name_and_short(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    prepare_impact_graph(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    main(["impact", "a"])
+    text = capsys.readouterr().out
+
+    assert "combine-a-b — Combine A and B" in text
+    assert "use-a-for-e — Use A for E" in text

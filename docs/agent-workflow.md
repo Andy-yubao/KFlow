@@ -111,7 +111,26 @@ kflow derivation add architecture-to-plans --short "架构形成接口和测试"
 
 不得把多输入、多输出推导拆成意义不完整的二元边，也不得根据正文或文件名自动猜测关系。
 
-## 8. Agent 边界
+## 8. 实体维护
+
+已登记实体的定义或关系变化使用 edit/remove 维护，不要另建重名实体。定位一律使用精确旧 name，不接受 ID、文件路径或模糊匹配：
+
+```text
+建立新实体         → node add / derivation add
+已有实体定义变化   → node edit / derivation edit
+关系失效           → derivation remove
+Node 不再属于 KFlow → node remove
+内容修改后的 review → review-order + confirm
+```
+
+- Node edit：按精确旧 name 定位，完整替换该 Node 定义，必须重新声明完整 files；stable ID 不变；rename / files 变化会进入正常 review；不自动 confirm。
+- Derivation edit：按精确旧 name 定位，name / short / detail / inputs / outputs 全部完整重新声明；stable ID 不变；任何定义或拓扑变化都走正常 review；不修改任何 Node 正文。
+- Derivation remove：只删除该 Derivation，不删除任何 Node；其 output Node 会根据剩余图自然变成 Source / Isolated / 其他角色；Confirmation 保留，状态由现有 review 机制重新计算。
+- Node remove：只有完全不被任何 Derivation input/output 引用时才允许删除；若仍有引用，先 edit/remove 相关 Derivation；不 cascade、不删除正文文件；成功后只删除该 Node 的 metadata 和它自己的 Confirmation。
+
+KFlow 维护的是知识实体定义与推导关系，不是正文。不要混用：定义变化走 edit/remove；正文内容变化而不涉及定义时无需改动图。Agent 仍通过编辑器读取和修改真实文件，修改后用 `review-order` + `confirm` 收尾。
+
+## 9. Agent 边界
 
 - 不把 `affected` 解释为文件一定错误；
 - 不在未阅读目标文件时确认；

@@ -146,3 +146,45 @@ def test_complete_edit_arguments_are_required(arguments, capsys):
     assert json.loads(capsys.readouterr().out)["issues"][0]["code"] == (
         "invalid_argument"
     )
+
+
+def test_node_add_edit_keep_canonical_file_order_in_json_and_reload(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    for name in ("z", "a", "m"):
+        (docs / f"{name}.md").write_text(name, encoding="utf-8")
+    _json(capsys, "init")
+
+    added = _json(
+        capsys, "node", "add", "node", "--file", "docs/z.md", "--file", "docs/a.md"
+    )
+    assert added["node"]["files"] == ["docs/a.md", "docs/z.md"]
+    reloaded = next(
+        item["files"]
+        for item in _json(capsys, "overview")["nodes"]
+        if item["name"] == "node"
+    )
+    assert reloaded == ["docs/a.md", "docs/z.md"]
+
+    edited = _json(
+        capsys,
+        "node",
+        "edit",
+        "node",
+        "--name",
+        "node",
+        "--file",
+        "docs/z.md",
+        "--file",
+        "docs/m.md",
+    )
+    assert edited["node"]["files"] == ["docs/m.md", "docs/z.md"]
+    reloaded_after = next(
+        item["files"]
+        for item in _json(capsys, "overview")["nodes"]
+        if item["name"] == "node"
+    )
+    assert reloaded_after == ["docs/m.md", "docs/z.md"]

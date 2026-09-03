@@ -23,13 +23,13 @@ def test_json_domain_errors_use_machine_envelope(tmp_path, monkeypatch, capsys) 
     monkeypatch.chdir(tmp_path)
 
     uninitialized = run_json_error(capsys, "overview")
-    assert uninitialized["schema_version"] == 2
+    assert uninitialized["schema_version"] == 3
     assert uninitialized["issues"][0]["code"] == "invalid_project"
 
     main(["init", "--json"])
     capsys.readouterr()
     unknown = run_json_error(capsys, "context", "missing")
-    assert unknown["schema_version"] == 3
+    assert unknown["schema_version"] == 4
     assert unknown["issues"][0]["code"] == "unknown_node"
     assert unknown["issues"][0]["message"] == "unknown node: missing"
     assert unknown["issues"][0]["references"] == ["missing"]

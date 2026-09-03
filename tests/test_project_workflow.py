@@ -17,10 +17,12 @@ def test_real_cli_workflow_needs_no_scan_step(tmp_path, monkeypatch, capsys) -> 
 
     run_json(capsys, "init")
     for name in ("requirements", "architecture", "implementation", "tests"):
-        run_json(capsys, "add-node", name, "--file", f"docs/{name}.md")
+        run_json(capsys, "node", "add", name, "--file", f"docs/{name}.md")
     run_json(
         capsys,
-        "derive",
+        "derivation",
+        "add",
+        "requirements-to-architecture",
         "--short",
         "requirements produce architecture",
         "--input",
@@ -32,7 +34,9 @@ def test_real_cli_workflow_needs_no_scan_step(tmp_path, monkeypatch, capsys) -> 
     )
     run_json(
         capsys,
-        "derive",
+        "derivation",
+        "add",
+        "architecture-to-delivery",
         "--short",
         "architecture produces implementation and tests",
         "--input",

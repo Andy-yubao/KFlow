@@ -35,6 +35,7 @@ def prepare_cli_graph(tmp_path) -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_z_first",
+            "architecture-design",
             "Define system architecture",
             "",
             (
@@ -45,6 +46,7 @@ def prepare_cli_graph(tmp_path) -> KnowledgeGraph:
         ),
         Derivation(
             "dv_m_second",
+            "interface-design",
             "Design interfaces and verification",
             "",
             (DerivationInput("nd_03", "system architecture", ""),),
@@ -55,6 +57,7 @@ def prepare_cli_graph(tmp_path) -> KnowledgeGraph:
         ),
         Derivation(
             "dv_a_third",
+            "service-implementation",
             "Implement the service",
             "",
             (DerivationInput("nd_04", "API contract", ""),),
@@ -79,8 +82,8 @@ def test_cli_exposes_only_the_final_public_commands() -> None:
 
     assert tuple(command_parser.choices) == (
         "init",
-        "add-node",
-        "derive",
+        "node",
+        "derivation",
         "overview",
         "context",
         "impact",
@@ -89,6 +92,8 @@ def test_cli_exposes_only_the_final_public_commands() -> None:
         "validate",
         "ui",
     )
+    assert "add-node" not in command_parser.choices
+    assert "derive" not in command_parser.choices
 
 
 def test_overview_uses_topological_derivations_without_ids_or_default_status(
@@ -122,6 +127,7 @@ def test_overview_preserves_complete_many_to_many_derivation(
     )
     derivation = Derivation(
         "dv_many",
+        "combine-inputs",
         "Combine inputs",
         "",
         (

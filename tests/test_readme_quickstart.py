@@ -43,8 +43,8 @@ def test_default_target_creates_only_the_six_quickstart_files(
         "No KFlow metadata has been created.\n"
         "Follow README.md to run:\n"
         "  kflow init\n"
-        "  kflow add-node ...\n"
-        "  kflow derive ...\n"
+        "  kflow node add ...\n"
+        "  kflow derivation add ...\n"
     )
     forbidden_names = {".kflow", ".git", "node_modules", "cache", "runtime"}
     assert not any(forbidden_names.intersection(path.parts) for path in root.rglob("*"))
@@ -148,7 +148,7 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
 
     run_json(capsys, "init")
     nodes = {
-        name: run_json(capsys, "add-node", name, "--file", f"docs/{name}.md")["node"]
+        name: run_json(capsys, "node", "add", name, "--file", f"docs/{name}.md")["node"]
         for name in (
             "requirements",
             "constraints",
@@ -160,7 +160,9 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
     }
     run_json(
         capsys,
-        "derive",
+        "derivation",
+        "add",
+        "requirements-to-architecture",
         "--short",
         "需求与约束形成架构",
         "--input",
@@ -175,7 +177,9 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
     )
     run_json(
         capsys,
-        "derive",
+        "derivation",
+        "add",
+        "architecture-to-plans",
         "--short",
         "架构形成接口与测试方案",
         "--input",
@@ -190,7 +194,9 @@ def test_readme_quickstart_builds_the_documented_graph_through_the_real_cli(
     )
     run_json(
         capsys,
-        "derive",
+        "derivation",
+        "add",
+        "api-to-deployment",
         "--short",
         "接口设计形成部署方案",
         "--input",
@@ -258,8 +264,8 @@ def test_readme_contains_the_real_guided_quickstart_commands():
     required_commands = (
         "python scripts/create_readme_quickstart.py",
         "kflow init",
-        "kflow add-node",
-        "kflow derive",
+        "kflow node add",
+        "kflow derivation add",
         "kflow confirm",
         "kflow overview --status",
         "kflow context",

@@ -131,8 +131,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("No KFlow metadata has been created.")
     print("Follow README.md to run:")
     print("  kflow init")
-    print("  kflow add-node ...")
-    print("  kflow derive ...")
+    print("  kflow node add ...")
+    print("  kflow derivation add ...")
     return 0
 
 

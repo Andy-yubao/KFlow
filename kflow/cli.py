@@ -6,7 +6,14 @@ import sys
 from pathlib import Path
 
 from kflow.core.graph import GraphValidationError
-from kflow.core.operations import add_derivation, add_node
+from kflow.core.operations import (
+    add_derivation,
+    add_node,
+    edit_derivation,
+    edit_node,
+    remove_derivation,
+    remove_node,
+)
 from kflow.core.query import (
     present_derivation,
     query_context,
@@ -14,7 +21,10 @@ from kflow.core.query import (
     query_project_graph,
     query_review_order,
 )
-from kflow.core.schema_versions import TASK_QUERY_SCHEMA_VERSION
+from kflow.core.schema_versions import (
+    MUTATION_SCHEMA_VERSION,
+    TASK_QUERY_SCHEMA_VERSION,
+)
 from kflow.core.scan import confirm
 from kflow.core.scan import validate as validate_project
 from kflow.core.storage import StorageError, initialize_project, load_graph
@@ -78,47 +88,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_option(p_init)
 
-    p_add = sub.add_parser(
-        "add-node",
-        help="Register existing files as one Knowledge Node.",
-        description="Register one complete knowledge unit made from existing files.",
+    p_node = sub.add_parser("node", help="Maintain Knowledge Nodes.")
+    node_commands = p_node.add_subparsers(dest="entity_action", metavar="ACTION")
+    p_node_add = node_commands.add_parser(
+        "add", help="Register existing files as one Knowledge Node."
     )
-    p_add.add_argument("name", help="Unique, human-readable Node name.")
-    p_add.add_argument(
-        "--file",
-        action="append",
-        required=True,
-        dest="files",
-        help="Project-relative file path; repeat for a multi-file Node.",
+    p_node_add.add_argument("name", help="Unique, human-readable Node name.")
+    _add_files_argument(p_node_add)
+    _add_json_option(p_node_add)
+    p_node_edit = node_commands.add_parser(
+        "edit", help="Replace one Node's complete definition."
     )
-    _add_json_option(p_add)
+    p_node_edit.add_argument("old_name", help="Exact current Node name.")
+    p_node_edit.add_argument("--name", required=True, help="Complete new Node name.")
+    _add_files_argument(p_node_edit)
+    _add_json_option(p_node_edit)
+    p_node_remove = node_commands.add_parser(
+        "remove", help="Remove an unreferenced Node."
+    )
+    p_node_remove.add_argument("name", help="Exact current Node name.")
+    _add_json_option(p_node_remove)
+    _add_json_option(p_node)
+    p_node.set_defaults(entity_parser=p_node)
 
-    p_derive = sub.add_parser(
-        "derive",
-        help="Connect existing Nodes with an explicit Derivation.",
-        description="Record one explainable, acyclic Derivation between existing Nodes.",
+    p_derivation = sub.add_parser("derivation", help="Maintain Derivations.")
+    derivation_commands = p_derivation.add_subparsers(
+        dest="entity_action", metavar="ACTION"
     )
-    p_derive.add_argument(
-        "--short", required=True, help="Short derivation explanation."
+    p_derivation_add = derivation_commands.add_parser(
+        "add", help="Connect Nodes with an explicit Derivation."
     )
-    p_derive.add_argument("--detail", default="", help="Optional detailed explanation.")
-    p_derive.add_argument(
-        "--input",
-        nargs=2,
-        action="append",
-        required=True,
-        metavar=("NODE", "SHORT"),
-        help="Input Node and its role; repeat for additional inputs.",
+    p_derivation_add.add_argument("name", help="Unique Derivation name.")
+    _add_derivation_definition_arguments(p_derivation_add)
+    _add_json_option(p_derivation_add)
+    p_derivation_edit = derivation_commands.add_parser(
+        "edit", help="Replace one Derivation's complete definition."
     )
-    p_derive.add_argument(
-        "--output",
-        nargs=2,
-        action="append",
-        required=True,
-        metavar=("NODE", "SHORT"),
-        help="Output Node and its role; repeat for additional outputs.",
+    p_derivation_edit.add_argument("old_name", help="Exact current Derivation name.")
+    p_derivation_edit.add_argument(
+        "--name", required=True, help="Complete new Derivation name."
     )
-    _add_json_option(p_derive)
+    _add_derivation_definition_arguments(p_derivation_edit)
+    _add_json_option(p_derivation_edit)
+    p_derivation_remove = derivation_commands.add_parser(
+        "remove", help="Remove one Derivation without removing Nodes."
+    )
+    p_derivation_remove.add_argument("name", help="Exact current Derivation name.")
+    _add_json_option(p_derivation_remove)
+    _add_json_option(p_derivation)
+    p_derivation.set_defaults(entity_parser=p_derivation)
 
     p_overview = sub.add_parser(
         "overview",
@@ -203,6 +221,37 @@ def _add_ui_start_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_files_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--file",
+        action="append",
+        required=True,
+        dest="files",
+        help="Project-relative file path; repeat for a multi-file Node.",
+    )
+
+
+def _add_derivation_definition_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--short", required=True, help="Short derivation explanation.")
+    parser.add_argument("--detail", default="", help="Optional detailed explanation.")
+    parser.add_argument(
+        "--input",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("NODE", "SHORT"),
+        help="Input Node and its role; repeat for additional inputs.",
+    )
+    parser.add_argument(
+        "--output",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("NODE", "SHORT"),
+        help="Output Node and its role; repeat for additional outputs.",
+    )
+
+
 def _add_json_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json",
@@ -230,6 +279,11 @@ def main(argv=None) -> None:
     if not args.command:
         parser.print_help()
         raise SystemExit(1)
+    if args.command in {"node", "derivation"} and args.entity_action is None:
+        if getattr(args, "json", False):
+            args.entity_parser.error("an action is required")
+        args.entity_parser.print_help()
+        raise SystemExit(1)
     if args.command == "ui" and getattr(args, "json", False):
         parser.error("ui does not support --json")
     if args.command == "ui":
@@ -256,7 +310,14 @@ def main(argv=None) -> None:
     try:
         result = dispatch(args)
     except Exception as error:
-        result = _error_envelope(error, _command_references(args))
+        schema_version = (
+            MUTATION_SCHEMA_VERSION
+            if args.command in {"node", "derivation"}
+            else TASK_QUERY_SCHEMA_VERSION
+        )
+        result = _error_envelope(
+            error, _command_references(args), schema_version=schema_version
+        )
         if getattr(args, "json", False):
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         else:
@@ -288,16 +349,32 @@ def dispatch(args) -> dict:
             "schema_version": TASK_QUERY_SCHEMA_VERSION,
             "root": str(root),
         }
-    if args.command == "add-node":
+    if args.command == "node" and args.entity_action == "add":
         node = add_node(root, args.name, tuple(args.files))
         return {
             "ok": True,
-            "schema_version": TASK_QUERY_SCHEMA_VERSION,
+            "schema_version": MUTATION_SCHEMA_VERSION,
             "node": {"id": node.id, "name": node.name, "files": list(node.files)},
         }
-    if args.command == "derive":
+    if args.command == "node" and args.entity_action == "edit":
+        node = edit_node(root, args.old_name, name=args.name, files=tuple(args.files))
+        return {
+            "ok": True,
+            "schema_version": MUTATION_SCHEMA_VERSION,
+            "previous_name": args.old_name,
+            "node": {"id": node.id, "name": node.name, "files": list(node.files)},
+        }
+    if args.command == "node" and args.entity_action == "remove":
+        node = remove_node(root, args.name)
+        return {
+            "ok": True,
+            "schema_version": MUTATION_SCHEMA_VERSION,
+            "node": {"id": node.id, "name": node.name, "files": list(node.files)},
+        }
+    if args.command == "derivation" and args.entity_action == "add":
         derivation = add_derivation(
             root,
+            args.name,
             args.short,
             args.detail,
             tuple((node, short, "") for node, short in args.input),
@@ -305,7 +382,30 @@ def dispatch(args) -> dict:
         )
         return {
             "ok": True,
-            "schema_version": TASK_QUERY_SCHEMA_VERSION,
+            "schema_version": MUTATION_SCHEMA_VERSION,
+            "derivation": present_derivation(load_graph(root), derivation),
+        }
+    if args.command == "derivation" and args.entity_action == "edit":
+        derivation = edit_derivation(
+            root,
+            args.old_name,
+            name=args.name,
+            short=args.short,
+            detail=args.detail,
+            inputs=tuple((node, short, "") for node, short in args.input),
+            outputs=tuple((node, short, "") for node, short in args.output),
+        )
+        return {
+            "ok": True,
+            "schema_version": MUTATION_SCHEMA_VERSION,
+            "previous_name": args.old_name,
+            "derivation": present_derivation(load_graph(root), derivation),
+        }
+    if args.command == "derivation" and args.entity_action == "remove":
+        derivation = remove_derivation(root, args.name)
+        return {
+            "ok": True,
+            "schema_version": MUTATION_SCHEMA_VERSION,
             "derivation": present_derivation(load_graph(root), derivation),
         }
     if args.command == "overview":
@@ -352,13 +452,19 @@ def _command_references(args) -> list[str]:
     node = getattr(args, "node", None)
     if node:
         references.append(node)
+    for attribute in ("name", "old_name"):
+        value = getattr(args, attribute, None)
+        if value:
+            references.append(value)
     references.extend(getattr(args, "files", ()) or ())
     for attribute in ("input", "output"):
         references.extend(item[0] for item in (getattr(args, attribute, ()) or ()))
     return references
 
 
-def _error_envelope(error: Exception, references: list[str]) -> dict:
+def _error_envelope(
+    error: Exception, references: list[str], *, schema_version: int
+) -> dict:
     if isinstance(error, GraphValidationError):
         issues = [
             {
@@ -388,7 +494,7 @@ def _error_envelope(error: Exception, references: list[str]) -> dict:
         ]
     return {
         "ok": False,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "issues": issues,
     }
 
@@ -418,15 +524,32 @@ def _print_result(result: dict, json_output: bool, args) -> None:
         _print_review_order(result)
     elif command == "init":
         print(f"Initialized KFlow at {result['root']}")
-    elif command == "add-node":
+    elif command == "node":
         node = result["node"]
-        print(f"Registered Node: {node['name']}")
-        for path in node["files"]:
-            print(f"- {path}")
-    elif command == "derive":
+        if args.entity_action == "add":
+            print(f"Added Node: {node['name']}")
+        elif args.entity_action == "edit":
+            suffix = (
+                node["name"]
+                if args.old_name == node["name"]
+                else f"{args.old_name} -> {node['name']}"
+            )
+            print(f"Edited Node: {suffix}")
+        else:
+            print(f"Removed Node: {node['name']}")
+    elif command == "derivation":
         derivation = result["derivation"]
-        print(f"Created Derivation: {derivation['short']}")
-        _print_derivation(derivation, descriptor="short")
+        if args.entity_action == "add":
+            print(f"Added Derivation: {derivation['name']}")
+        elif args.entity_action == "edit":
+            suffix = (
+                derivation["name"]
+                if args.old_name == derivation["name"]
+                else f"{args.old_name} -> {derivation['name']}"
+            )
+            print(f"Edited Derivation: {suffix}")
+        else:
+            print(f"Removed Derivation: {derivation['name']}")
     elif command == "confirm":
         _print_confirmation(result)
 

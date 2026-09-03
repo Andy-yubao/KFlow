@@ -86,7 +86,7 @@ kflow review-order
 
 ## 6. 受限：显式批量确认
 
-`confirm NODE --downstream` 只在 Agent 已能判断整个 downstream scope（目标及其全部可达下游）无需逐 Node 重新分析时才使用。典型场景是纯机械修正：拼写、标点、排版、格式化、明显机械性路径 / 命名修正，或整个 scope 已被一次性完整审查：
+`confirm NODE --downstream` 只在 Agent 已能判断整个 downstream scope（目标及其全部可达下游）无需逐 Node 重新分析时才使用。典型场景是纯机械修正：拼写、标点、排版、格式化、机械性路径 / Node / Derivation rename，或整个 scope 已被一次性完整审查：
 
 ```bash
 kflow confirm requirements --downstream
@@ -94,7 +94,7 @@ kflow confirm requirements --downstream
 
 执行时 KFlow 只把范围内当前仍 needs_review 的 Node 按稳定全局拓扑序写入 Confirmation；已 current 的 Node 不重写。它不做语义推断，不判断“下游一定正确”；中途失败保留已写入部分并明确报告失败 Node，不是原子事务。
 
-必须逐 Node 阅读才能判断是否正确 → 不要 `--downstream`。涉及需求 / 接口 / 架构 / 算法 / 行为 / 约束 / 依赖 / Derivation 定义 / Node 定义等语义变化 → 禁止 `--downstream`。拿不准 → 普通 `review-order` + 单 Node `confirm`。
+是否可用 `--downstream`，取决于这次变化是否可能改变知识语义、接口、约束、行为或下游结论，而不是它是不是 edit / rename。必须逐 Node 阅读才能判断是否正确 → 不要 `--downstream`。可能改变语义或下游结论的变化（需求 / 接口 / 架构 / 算法 / 行为 / 约束 / 依赖变化，改变 Derivation 语义的 edit，或改变 Node 所代表知识范围的 files/name edit）→ 禁止 `--downstream`。拿不准 → 普通 `review-order` + 单 Node `confirm`。
 
 rename（`node edit` / `derivation edit`）照常触发 review；只有当你确认整个 downstream scope 只受机械 rename 影响时才可 `confirm ROOT --downstream` 收尾，ROOT 使用 edit 后当前有效的 Node reference。完整允许 / 禁止清单见 [KFlow Agent Skill](kflow_skills.md)。
 

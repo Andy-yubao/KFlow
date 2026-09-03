@@ -242,6 +242,35 @@ Node 数组按稳定全局拓扑序，`further_downstream` 不包含状态或路
 
 初始 scan 已存在 validation issue 时，在写入任何 Confirmation 前拒绝：`ok` 为 `false`、`confirmed` 为空、`failed_node` 为 `null`、`issues` 携带这些 scan issue。KFlow 不做语义推断；是否整个 downstream scope 可确认由调用者断言。
 
+### 领域错误路由与 pre-write 失败
+
+合法的 downstream invocation（parser 已确认 `command=confirm` 且 `--downstream`）遇到领域 / 项目错误时一律使用 Downstream Confirm v1，绝不落到通用 task-query v3 envelope。领域错误至少包括：unknown Node、invalid project metadata、invalid graph、missing / unreadable managed file、initial scan issue、runtime confirmation failure、final / post-write verification issue。真正的 argparse / command-shape 错误（例如缺少 NODE）仍使用最小 Argument Error v3。
+
+selector / pre-write 错误无法解析目标时，`scope` 与 `failed_node` 均为 `null`。例如 unknown Node：
+
+```json
+{
+  "ok": false,
+  "schema_version": 1,
+  "scope": null,
+  "confirmed": [],
+  "skipped_current": [],
+  "remaining": [],
+  "failed_node": null,
+  "issues": [
+    {
+      "code": "unknown_node",
+      "message": "unknown node: missing",
+      "references": ["missing"]
+    }
+  ]
+}
+```
+
+### 最终校验 / post-write 失败
+
+写入完成后，若最终验证 scan / review-order 出现 blocking issue（missing file、I/O error、validation issue），结果同样是 partial failure，绝不包装成成功：`ok` 为 `false`、`schema_version` 为 1、`confirmed` 保留本次已成功写入的 Node、`failed_node` 为 `null`、`issues` 携带该 final issue。只要存在 blocking downstream issue，就不产生 `ok: true`，默认文本也不会输出 `Review scope is clear.`。
+
 ## 8. Mutation 与 validate
 
 `node add/edit/remove` 与 `derivation add/edit/remove` 使用 v4 mutation envelope，返回 stable ID 和完整规范实体。edit 结果同时返回 `previous_name`。Derivation 的完整实体包含 `name`、`short`、`detail`、`inputs` 与 `outputs`。

@@ -491,6 +491,19 @@ def _dispatch_downstream_confirm(root: Path, node_reference: str) -> dict:
     confirmed = [_node_brief(graph, node_id) for node_id in outcome.confirmed]
     skipped = [_node_brief(graph, node_id) for node_id in outcome.skipped_current]
     review = query_review_order(root, node_reference)
+    if not review["ok"]:
+        # Post-write verification surfaced blocking issues after Core returned a
+        # clean run. Earlier writes stay; never claim success over blocking issues.
+        return {
+            "ok": False,
+            "schema_version": DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
+            "scope": scope,
+            "confirmed": confirmed,
+            "skipped_current": skipped,
+            "remaining": [],
+            "failed_node": None,
+            "issues": review["issues"],
+        }
     return {
         "ok": True,
         "schema_version": DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
@@ -800,12 +813,11 @@ def _print_downstream_confirmation(result: dict) -> None:
         confirmed = result.get("confirmed", [])
         if not confirmed and result.get("failed_node") is None:
             if scope is None:
-                print(
-                    "KFlow could not confirm downstream: the project graph is invalid."
-                )
+                print("KFlow could not confirm downstream.")
             else:
                 print(f"KFlow could not confirm downstream from {scope['name']}.")
             if issues:
+                print("Reason:")
                 _print_issues(issues)
             return
         print(f"Confirmed downstream from: {scope['name']}\n")

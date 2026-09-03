@@ -55,7 +55,9 @@ stdout 只包含一个 JSON object。查询领域错误保留该命令的完整�
 kflow confirm requirements --downstream --json
 ```
 
-该调用使用独立 Downstream Confirm v1 result kind，字段包括 `scope`、`confirmed`、`skipped_current`、`remaining`；失败时为 `ok: false` 并携带 `confirmed`、`failed_node` 与 `issues`（schema 见 [schema.md](schema.md)）。KFlow 不做语义推断，也不把这次调用当作跨整个 scope 的原子事务；调用方必须检查 `ok`、`confirmed` 与 `failed_node`，不能假定失败时空确认。语义 / 定义变化的批量确认属于误用。
+该调用使用独立 Downstream Confirm v1 result kind，字段包括 `scope`、`confirmed`、`skipped_current`、`remaining`；失败时为 `ok: false` 并携带 `confirmed`、`failed_node` 与 `issues`（schema 见 [schema.md](schema.md)）。KFlow 不做语义推断，也不把这次调用当作跨整个 scope 的原子事务；调用方必须检查 `ok`、`confirmed` 与 `failed_node`，不能假定失败时空确认。是否可用取决于该变化是否可能改变知识语义或下游结论，而不是它是不是 rename：可能改变语义或下游结论的实体定义变化的批量确认属于误用；已确认只受纯机械影响的 rename / 路径修正仍可显式调用。
+
+合法的 downstream 调用的领域错误（unknown Node、invalid metadata / graph、missing / unreadable managed file、initial scan issue、runtime confirmation failure、final verification issue）全部保留 Downstream Confirm v1 完整失败 shape；只有真正的 argparse / command-shape 错误（如缺少 NODE）才走最小 Argument Error v3 envelope。
 
 ## 安全边界
 

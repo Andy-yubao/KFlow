@@ -231,6 +231,15 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
     only writes each current baseline, re-scanning project facts before every
     write so each decision reflects the latest state. Nodes that are already
     current are skipped and never rewritten.
+
+    Any selector or project failure is reported as DownstreamConfirmationError, so
+    callers never see a generic task-query error for a downstream invocation: an
+    unknown reference raises ``unknown_node``, unreadable or invalid metadata
+    raises ``invalid_project``, invalid graphs raise their graph issues, and
+    pre-existing scan issues refuse the batch before any write. A blocking issue
+    discovered by the final verification scan after writes is also a
+    DownstreamConfirmationError that keeps ``confirmed`` and leaves
+    ``failed_node`` as ``None``; earlier writes are retained.
     """
     root = Path(root)
     try:
@@ -243,12 +252,26 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
         raise DownstreamConfirmationError(
             root=None, confirmed=(), failed_node=None, issues=issues
         ) from error
+    except StorageError as error:
+        raise DownstreamConfirmationError(
+            root=None,
+            confirmed=(),
+            failed_node=None,
+            issues=(ScanIssue("invalid_project", str(error).strip("'")),),
+        ) from error
+
+    try:
+        root_id = resolve_node_id(initial.graph, node_reference)
+    except KeyError as error:
+        raise DownstreamConfirmationError(
+            root=None,
+            confirmed=(),
+            failed_node=None,
+            issues=(
+                ScanIssue("unknown_node", str(error).strip("'"), (node_reference,)),
+            ),
+        ) from error
     if initial.issues:
-        root_id: str | None = None
-        try:
-            root_id = resolve_node_id(initial.graph, node_reference)
-        except KeyError:
-            root_id = None
         raise DownstreamConfirmationError(
             root=root_id,
             confirmed=(),
@@ -256,7 +279,6 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
             issues=initial.issues,
         )
 
-    root_id = resolve_node_id(initial.graph, node_reference)
     scope = set(initial.graph.downstream(root_id))
 
     confirmed: list[str] = []
@@ -289,6 +311,15 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
         confirmed.append(node_id)
 
     final = scan(root)
+    if final.issues:
+        # Post-write verification found blocking issues. Earlier writes stay; this
+        # is a partial failure with no single failed Node to blame.
+        raise DownstreamConfirmationError(
+            root=root_id,
+            confirmed=tuple(confirmed),
+            failed_node=None,
+            issues=final.issues,
+        )
     remaining: list[str] = []
     for node_id in final.graph.topological_order():
         if node_id not in scope:

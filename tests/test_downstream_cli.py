@@ -279,7 +279,7 @@ def test_confirm_downstream_partial_failure_is_explicit_in_text(
     assert "simulated write failure" in captured.out
 
 
-def test_confirm_downstream_unknown_node_uses_unknown_node_envelope(
+def test_confirm_downstream_unknown_node_uses_downstream_v1_envelope(
     tmp_path, monkeypatch, capsys
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -287,8 +287,14 @@ def test_confirm_downstream_unknown_node_uses_unknown_node_envelope(
 
     result = run_json_error(capsys, "confirm", "missing", "--downstream")
 
+    assert result["ok"] is False
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"] is None
+    assert result["confirmed"] == []
+    assert result["failed_node"] is None
     assert result["issues"][0]["code"] == "unknown_node"
-    assert result["schema_version"] == 3
+    assert result["issues"][0]["message"] == "unknown node: missing"
+    assert result["issues"][0]["references"] == ["missing"]
 
 
 def test_confirm_downstream_without_node_is_an_argument_error(
@@ -301,3 +307,91 @@ def test_confirm_downstream_without_node_is_an_argument_error(
 
     assert result["issues"][0]["code"] == "invalid_argument"
     assert result["schema_version"] == 3
+
+
+def test_confirm_downstream_invalid_metadata_uses_downstream_v1_envelope(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    (tmp_path / ".kflow" / "project.json").write_text(
+        json.dumps({"kind": "broken", "schema_version": 3}),
+        encoding="utf-8",
+    )
+
+    result = run_json_error(capsys, "confirm", "a", "--downstream")
+
+    assert result["ok"] is False
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"] is None
+    assert result["confirmed"] == []
+    assert result["failed_node"] is None
+    assert result["issues"][0]["code"] == "invalid_project"
+
+
+def test_confirm_downstream_final_query_issue_is_a_json_failure_preserving_confirmed(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A blocking issue in the post-write verification never reads as success."""
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    query_module = import_module("kflow.core.query")
+    real_query_scan = query_module.scan
+    deleted = False
+
+    def final_query_surfaces_issue(root):
+        nonlocal deleted
+        if not deleted:
+            deleted = True
+            (root / "docs" / "x.md").unlink()
+        return real_query_scan(root)
+
+    monkeypatch.setattr(query_module, "scan", final_query_surfaces_issue)
+
+    result = run_json_error(capsys, "confirm", "a", "--downstream")
+
+    assert result["ok"] is False
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"]["name"] == "a"
+    assert result["confirmed"] == [
+        {"id": "nd_a", "name": "a", "files": ["docs/a.md"]},
+        {"id": "nd_b", "name": "b", "files": ["docs/b.md"]},
+        {"id": "nd_c", "name": "c", "files": ["docs/c.md"]},
+    ]
+    assert result["failed_node"] is None
+    assert result["issues"][0]["code"] == "missing_file"
+    assert result["remaining"] == []
+
+
+def test_confirm_downstream_final_query_issue_text_never_says_clear(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    query_module = import_module("kflow.core.query")
+    real_query_scan = query_module.scan
+    deleted = False
+
+    def final_query_surfaces_issue(root):
+        nonlocal deleted
+        if not deleted:
+            deleted = True
+            (root / "docs" / "x.md").unlink()
+        return real_query_scan(root)
+
+    monkeypatch.setattr(query_module, "scan", final_query_surfaces_issue)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["confirm", "a", "--downstream"])
+    captured = capsys.readouterr()
+
+    assert exit_info.value.code == 2
+    assert captured.err == ""
+    assert "Review scope is clear." not in captured.out
+    assert "Confirmed downstream from: a" in captured.out
+    assert "3 nodes confirmed." not in captured.out
+    assert "Confirmed:\n1. a" in captured.out
+    assert "Reason:" in captured.out
+    assert "missing_file" in captured.out

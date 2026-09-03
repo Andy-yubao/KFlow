@@ -429,6 +429,46 @@ def test_downstream_runtime_failure_is_partial_and_explicit(
     assert scan(tmp_path).statuses["nd_b"].needs_review is True
 
 
+def test_downstream_unknown_reference_is_a_downstream_domain_error(
+    tmp_path,
+) -> None:
+    build_project(
+        tmp_path,
+        ("a", "b"),
+        (("a-to-b", ("a",), ("b",)),),
+        confirm_all=True,
+    )
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "missing")
+
+    assert error.value.root is None
+    assert error.value.failed_node is None
+    assert error.value.confirmed == ()
+    assert error.value.issues[0].code == "unknown_node"
+    assert error.value.issues[0].message == "unknown node: missing"
+
+
+def test_downstream_invalid_metadata_is_a_downstream_domain_error(tmp_path) -> None:
+    build_project(
+        tmp_path,
+        ("a", "b"),
+        (("a-to-b", ("a",), ("b",)),),
+        confirm_all=True,
+    )
+    (tmp_path / ".kflow" / "project.json").write_text(
+        '{"kind": "broken", "schema_version": 3}', encoding="utf-8"
+    )
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "a")
+
+    assert error.value.root is None
+    assert error.value.failed_node is None
+    assert error.value.confirmed == ()
+    assert error.value.issues[0].code == "invalid_project"
+
+
 def test_downstream_accepts_exact_node_id_path_and_name_references(tmp_path) -> None:
     build_project(
         tmp_path,

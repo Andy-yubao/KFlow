@@ -58,23 +58,26 @@ Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 
 ### 允许使用
 
-只有当你已有充分理由判断整个 downstream scope 无需逐 Node 重新分析时才可使用，典型是纯机械、不改变知识语义的修正：
+是否允许 `--downstream`，取决于这次变化是否可能改变知识语义、接口、约束、行为或下游结论，而不是它是不是 edit / rename。前提始终是你已能确认整个 downstream scope 无需逐 Node 重新分析；典型是纯机械、不改变知识语义的修正：
 
 - 纯拼写修正；
 - 标点 / 排版 / 格式修正；
 - 修复后不改变含义、接口、约束或行为的机械语法修正；
-- 明显机械性的路径 / 命名修正；
+- 机械性路径 rename；
+- 机械性 Node rename；
+- 机械性 Derivation rename；
 - 整个 downstream scope 已经由人工或 Agent 一次性完整审查过。
 
 ### 禁止或需要逐 Node
 
 以下情况必须逐 Node 阅读并走普通 `review-order` + `confirm`，禁止 `--downstream`：
 
-- 需求 / 接口 / 架构 / 算法 / 约束 / 数据格式 / 行为 / 依赖关系变化；
-- Derivation 定义变化；
-- Node files / name 等实体定义变化；
-- 不确定影响范围的修改；
+- 需求 / 接口 / 架构 / 算法 / 约束 / 行为 / 数据格式 / 依赖关系变化；
+- 可能改变知识语义或下游结论的 Node / Derivation 定义变化，例如改变 Derivation 语义的 edit，或改变 Node 所代表知识范围的 files/name edit；
+- 任何不确定是否纯机械的实体定义变化，或影响范围不明的修改；
 - 任何可能改变下游结论的语义修改。
+
+关键不是“是否 rename / edit”，而是“是否可能改变知识语义、接口、约束、行为或下游结论”：可能改变 → 禁止 `--downstream`；能确认只受纯机械影响 → 可以。机械 rename 可走 `--downstream`，语义性 rename 仍要逐 Node 审查。
 
 “代码语法错误”不自动等于安全：修复可能改变程序行为。
 

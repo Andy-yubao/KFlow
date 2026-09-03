@@ -15,7 +15,7 @@ KFlow 不得：
 - 建立目录、章节、段落或代码片段级 Node；
 - 用固定关系类型、向量相似度或自动猜测替代显式 Derivation；
 - 把“可能受影响”表述为“一定错误”；
-- 级联确认下游或同源输出；
+- 隐式级联确认下游或同源输出；
 - 引入 event sourcing、快照数据库或时间旅行引擎。
 
 ## 2. 架构分层
@@ -137,7 +137,9 @@ Confirmation 保存某个 Node 最近一次完成检查时的版本基线：
 1. 每个 Node 至多有一个当前 Confirmation 文件。
 2. Confirmation 的 Node 必须存在并与文件名匹配。
 3. Confirmation 完整记录确认时的版本条件。
-4. confirm 只写目标 Node，绝不级联。
+4. 普通 confirm() 只写目标 Node，绝不隐式级联。
+
+`confirm_downstream()` 是调用者显式请求的顺序批量操作：按稳定全局拓扑序，对目标及其可达下游中当前仍 `needs_review` 的 Node 逐 Node 复用普通 confirm() 写入当前 baseline；已 current 的 Node 不重写。KFlow 不做语义推断，也不把这次调用当作跨整个 scope 的原子事务——中途失败时，此前已写入的 Confirmation 保留，失败原因与已确认 Node 显式报告。普通 confirm 仍是唯一默认流程；`confirm_downstream()` 绝不自动触发，也不创建 batch metadata、event、transaction journal 或 confirmation group。
 
 ## 5. Fingerprint 与 effective version
 
@@ -196,6 +198,8 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 2. 原子写入目标 Node 的当前基线。
 3. 不写任何其他 Confirmation。
 4. 返回确认前原因、确认后状态和剩余待检查摘要。
+
+以上描述的是普通 `confirm()`，一次只写目标 Node，绝不隐式级联。唯一的批量入口是 `confirm_downstream()`，语义见 §3.4 Confirmation 不变量：它逐 Node 复用普通 confirm()，只写范围内当前仍 `needs_review` 的 Node，从不自动触发。中途失败或最终校验发现 blocking issue 时，此前写入的 Confirmation 保留，并作为显式 partial failure 报告（`confirmed` 保留、无正在失败 Node 时 `failed_node` 为空），绝不包装成成功。
 
 ### 实体维护
 
@@ -265,7 +269,7 @@ Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/pro
 - 自动关系推断与全项目文件登记；
 - 章节、段落、代码片段级 Node；
 - 固定关系类型枚举；
-- 级联确认；
+- 默认 / 隐式级联确认；批量确认只允许显式 `confirm_downstream()`（见 §3.4）；
 - 自动修改下游；
 - 远程 Web 服务、MCP Server、文件系统 watcher 或不受正式 Human Interface 生命周期命令管理的常驻服务；
 - event sourcing、快照数据库或时间旅行引擎。

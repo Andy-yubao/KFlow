@@ -184,3 +184,134 @@ def _normalize_path_reference(reference: str) -> str | None:
     ):
         return None
     return candidate
+
+
+@dataclass(frozen=True, slots=True)
+class DownstreamConfirmationResult:
+    """Outcome of one explicit downstream batch confirmation."""
+
+    root: str
+    confirmed: tuple[str, ...]
+    skipped_current: tuple[str, ...]
+    remaining: tuple[str, ...]
+
+
+class DownstreamConfirmationError(ValueError):
+    """Raised when a downstream confirmation cannot start or stops early.
+
+    Already-written baselines are retained; this operation is deliberately not
+    an atomic transaction over the whole downstream scope.
+    """
+
+    def __init__(
+        self,
+        *,
+        root: str | None,
+        confirmed: tuple[str, ...],
+        failed_node: str | None,
+        issues: tuple[ScanIssue, ...],
+    ) -> None:
+        self.root = root
+        self.confirmed = confirmed
+        self.failed_node = failed_node
+        self.issues = issues
+        detail = (
+            f"downstream confirmation stopped at {failed_node}"
+            if failed_node is not None
+            else "downstream confirmation could not start"
+        )
+        super().__init__(detail)
+
+
+def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmationResult:
+    """Confirm the target and its reachable review debt in stable topological order.
+
+    The caller explicitly asserts that every needs-review Node reachable from the
+    target has been judged reviewable. KFlow performs no semantic inference: it
+    only writes each current baseline, re-scanning project facts before every
+    write so each decision reflects the latest state. Nodes that are already
+    current are skipped and never rewritten.
+    """
+    root = Path(root)
+    try:
+        initial = scan(root)
+    except GraphValidationError as error:
+        issues = tuple(
+            ScanIssue(issue.code, issue.message, issue.references)
+            for issue in error.issues
+        )
+        raise DownstreamConfirmationError(
+            root=None, confirmed=(), failed_node=None, issues=issues
+        ) from error
+    if initial.issues:
+        root_id: str | None = None
+        try:
+            root_id = resolve_node_id(initial.graph, node_reference)
+        except KeyError:
+            root_id = None
+        raise DownstreamConfirmationError(
+            root=root_id,
+            confirmed=(),
+            failed_node=None,
+            issues=initial.issues,
+        )
+
+    root_id = resolve_node_id(initial.graph, node_reference)
+    scope = set(initial.graph.downstream(root_id))
+
+    confirmed: list[str] = []
+    skipped: list[str] = []
+    for node_id in initial.graph.topological_order():
+        if node_id not in scope:
+            continue
+        current = scan(root)
+        if current.issues:
+            raise DownstreamConfirmationError(
+                root=root_id,
+                confirmed=tuple(confirmed),
+                failed_node=node_id,
+                issues=current.issues,
+            )
+        status = current.statuses.get(node_id)
+        if status is None or not status.needs_review:
+            skipped.append(node_id)
+            continue
+        try:
+            confirm(root, node_id)
+        except Exception as error:
+            name = current.graph.nodes[node_id].name
+            raise DownstreamConfirmationError(
+                root=root_id,
+                confirmed=tuple(confirmed),
+                failed_node=node_id,
+                issues=(_confirmation_failure_issue(error, node_id, name),),
+            ) from error
+        confirmed.append(node_id)
+
+    final = scan(root)
+    remaining: list[str] = []
+    for node_id in final.graph.topological_order():
+        if node_id not in scope:
+            continue
+        final_status = final.statuses.get(node_id)
+        if final_status is not None and final_status.needs_review:
+            remaining.append(node_id)
+    return DownstreamConfirmationResult(
+        root=root_id,
+        confirmed=tuple(confirmed),
+        skipped_current=tuple(skipped),
+        remaining=tuple(remaining),
+    )
+
+
+def _confirmation_failure_issue(error: Exception, node_id: str, name: str) -> ScanIssue:
+    if isinstance(error, StorageError):
+        code = "invalid_project"
+    elif isinstance(error, OSError):
+        code = "io_error"
+    elif isinstance(error, KeyError):
+        code = "unknown_node"
+    else:
+        code = "invalid_argument"
+    detail = str(error).strip("'")
+    return ScanIssue(code, f"cannot confirm node {name}: {detail}", (node_id,))

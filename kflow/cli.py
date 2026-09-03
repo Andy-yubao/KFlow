@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from kflow.core.graph import GraphValidationError
+from kflow.core.graph import GraphValidationError, KnowledgeGraph
 from kflow.core.operations import (
     add_derivation,
     add_node,
@@ -22,11 +22,16 @@ from kflow.core.query import (
     query_review_order,
 )
 from kflow.core.schema_versions import (
+    DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
     MUTATION_SCHEMA_VERSION,
     TASK_QUERY_SCHEMA_VERSION,
 )
-from kflow.core.scan import confirm
-from kflow.core.scan import validate as validate_project
+from kflow.core.scan import (
+    DownstreamConfirmationError,
+    confirm,
+    confirm_downstream,
+    validate as validate_project,
+)
 from kflow.core.storage import StorageError, initialize_project, load_graph
 from kflow.human.runtime import print_ui_status, start_ui, stop_ui
 
@@ -185,6 +190,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_confirm.add_argument("node", help="Node ID, name, or registered file path.")
+    p_confirm.add_argument(
+        "--downstream",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "Explicitly assert that the target and every currently needs-review Node "
+            "reachable from it may be confirmed, then write each current baseline in "
+            "stable topological order. Never the default."
+        ),
+    )
     _add_json_option(p_confirm)
 
     p_validate = sub.add_parser(
@@ -416,6 +431,8 @@ def dispatch(args) -> dict:
         return query_impact(root, args.node)
     if args.command == "review-order":
         return query_review_order(root, args.node)
+    if args.command == "confirm" and getattr(args, "downstream", False):
+        return _dispatch_downstream_confirm(root, args.node)
     if args.command == "confirm":
         before, after = confirm(root, args.node)
         graph = load_graph(root)
@@ -460,6 +477,69 @@ def _command_references(args) -> list[str]:
     for attribute in ("input", "output"):
         references.extend(item[0] for item in (getattr(args, attribute, ()) or ()))
     return references
+
+
+def _dispatch_downstream_confirm(root: Path, node_reference: str) -> dict:
+    """Run the explicit downstream confirmation and shape its result contract."""
+    try:
+        outcome = confirm_downstream(root, node_reference)
+    except DownstreamConfirmationError as error:
+        return _downstream_error_result(root, error)
+
+    graph = load_graph(root)
+    scope = _node_brief(graph, outcome.root)
+    confirmed = [_node_brief(graph, node_id) for node_id in outcome.confirmed]
+    skipped = [_node_brief(graph, node_id) for node_id in outcome.skipped_current]
+    review = query_review_order(root, node_reference)
+    return {
+        "ok": True,
+        "schema_version": DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
+        "scope": scope,
+        "confirmed": confirmed,
+        "skipped_current": skipped,
+        "remaining": review["nodes"],
+        "issues": review["issues"],
+    }
+
+
+def _downstream_error_result(root: Path, error: DownstreamConfirmationError) -> dict:
+    """Shape a partial or pre-write downstream failure without hiding state."""
+    graph: KnowledgeGraph | None
+    try:
+        graph = load_graph(root)
+    except Exception:
+        graph = None
+    briefs = (
+        {}
+        if graph is None
+        else {n.id: _node_brief(graph, n.id) for n in graph.nodes.values()}
+    )
+    return {
+        "ok": False,
+        "schema_version": DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
+        "scope": None if error.root is None else briefs.get(error.root),
+        "confirmed": [
+            briefs[node_id] for node_id in error.confirmed if node_id in briefs
+        ],
+        "skipped_current": [],
+        "remaining": [],
+        "failed_node": (
+            None if error.failed_node is None else briefs.get(error.failed_node)
+        ),
+        "issues": [
+            {
+                "code": issue.code,
+                "message": issue.message,
+                "references": list(issue.references),
+            }
+            for issue in error.issues
+        ],
+    }
+
+
+def _node_brief(graph: KnowledgeGraph, node_id: str) -> dict:
+    node = graph.nodes[node_id]
+    return {"id": node.id, "name": node.name, "files": list(node.files)}
 
 
 def _error_envelope(
@@ -509,6 +589,9 @@ def _print_result(result: dict, json_output: bool, args) -> None:
         return
     if command == "overview" and _can_render_overview(result):
         _print_overview(result, include_status=args.status)
+        return
+    if command == "confirm" and getattr(args, "downstream", False):
+        _print_downstream_confirmation(result)
         return
     if not result.get("ok", True):
         print("KFlow could not complete the command:", file=sys.stderr)
@@ -708,6 +791,50 @@ def _print_confirmation(result: dict) -> None:
         print("Current review scope is clear.")
     else:
         print(f"Next: {next_node['name']} — {_reason_text(next_node['reasons'])}")
+
+
+def _print_downstream_confirmation(result: dict) -> None:
+    scope = result.get("scope")
+    issues = result.get("issues", [])
+    if not result.get("ok", True):
+        confirmed = result.get("confirmed", [])
+        if not confirmed and result.get("failed_node") is None:
+            if scope is None:
+                print(
+                    "KFlow could not confirm downstream: the project graph is invalid."
+                )
+            else:
+                print(f"KFlow could not confirm downstream from {scope['name']}.")
+            if issues:
+                _print_issues(issues)
+            return
+        print(f"Confirmed downstream from: {scope['name']}\n")
+        print("Confirmed:")
+        for position, node in enumerate(confirmed, start=1):
+            print(f"{position}. {node['name']}")
+        failed = result.get("failed_node")
+        if failed is not None:
+            print(f"\nStopped at: {failed['name']}")
+        if issues:
+            print("Reason:")
+            _print_issues(issues)
+        return
+
+    confirmed = result.get("confirmed", [])
+    remaining = result.get("remaining", [])
+    if confirmed:
+        print(f"Confirmed downstream from: {scope['name']}\n")
+        for position, node in enumerate(confirmed, start=1):
+            print(f"{position}. {node['name']}")
+        print(f"\n{len(confirmed)} nodes confirmed.")
+    else:
+        print(f"No nodes need confirmation from {scope['name']}.")
+    if remaining:
+        print("Remaining review:")
+        for node in remaining:
+            print(f"- {node['name']} — {_reason_text(node['reasons'])}")
+    else:
+        print("Review scope is clear.")
 
 
 def _print_validation(result: dict) -> None:

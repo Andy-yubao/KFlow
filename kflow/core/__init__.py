@@ -20,9 +20,19 @@ from kflow.core.versioning import (
     fingerprint_files,
     fingerprint_node,
 )
-from kflow.core.scan import ScanIssue, ScanResult, confirm, scan, validate
+from kflow.core.scan import (
+    DownstreamConfirmationError,
+    DownstreamConfirmationResult,
+    ScanIssue,
+    ScanResult,
+    confirm,
+    confirm_downstream,
+    scan,
+    validate,
+)
 from kflow.core.schema_versions import (
     CONTEXT_SCHEMA_VERSION,
+    DOWNSTREAM_CONFIRM_SCHEMA_VERSION,
     IMPACT_SCHEMA_VERSION,
     METADATA_SCHEMA_VERSION,
     MUTATION_SCHEMA_VERSION,
@@ -69,6 +79,9 @@ __all__ = [
     "Derivation",
     "DerivationInput",
     "DerivationOutput",
+    "DOWNSTREAM_CONFIRM_SCHEMA_VERSION",
+    "DownstreamConfirmationError",
+    "DownstreamConfirmationResult",
     "Fingerprint",
     "GraphValidationError",
     "KnowledgeGraph",
@@ -99,6 +112,7 @@ __all__ = [
     "fingerprint_files",
     "fingerprint_node",
     "confirm",
+    "confirm_downstream",
     "evaluate_statuses",
     "initialize_project",
     "load_confirmations",

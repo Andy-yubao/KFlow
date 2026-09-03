@@ -15,7 +15,7 @@ vi.mock("../api/project", async (importOriginal) => {
 function project(): ProjectGraphResult {
   return {
     ok: true,
-    schema_version: 2,
+    schema_version: 3,
     project: {
       status: "current",
       node_count: 2,
@@ -44,6 +44,7 @@ function project(): ProjectGraphResult {
     derivations: [
       {
         id: "dv_design",
+        name: "design",
         short: "Input creates output",
         detail: "The complete derivation detail.",
         inputs: [

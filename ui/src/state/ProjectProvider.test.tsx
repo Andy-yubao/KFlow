@@ -44,7 +44,7 @@ function diff(reference: string): GraphDiffResult {
   return {
     ok: true,
     available: true,
-    schema_version: 2,
+    schema_version: 3,
     base: {
       reference,
       commit: reference === "HEAD" ? headCommit : reference,
@@ -114,7 +114,7 @@ function Probe() {
 }
 
 beforeEach(() => {
-  api.fetchProjectGraph.mockReset().mockResolvedValue({ schema_version: 2 });
+  api.fetchProjectGraph.mockReset().mockResolvedValue({ schema_version: 3 });
   api.fetchReviewOrder.mockReset().mockResolvedValue({ review_order: [] });
   api.fetchGitHistory.mockReset().mockResolvedValue(history());
   api.fetchGraphDiff
@@ -130,7 +130,7 @@ beforeEach(() => {
 describe("ProjectProvider Graph Diff history requests", () => {
   it("loads core project data without waiting for pending Git history", async () => {
     const historyRequest = deferred<GitHistoryResult>();
-    api.fetchProjectGraph.mockResolvedValue({ schema_version: 2, marker: "core" });
+    api.fetchProjectGraph.mockResolvedValue({ schema_version: 3, marker: "core" });
     api.fetchReviewOrder.mockResolvedValue({ review_order: ["nd_core"] });
     api.fetchGitHistory.mockReturnValue(historyRequest.promise);
 
@@ -156,7 +156,7 @@ describe("ProjectProvider Graph Diff history requests", () => {
   });
 
   it("keeps loaded core data when Git history fails", async () => {
-    api.fetchProjectGraph.mockResolvedValue({ schema_version: 2, marker: "core" });
+    api.fetchProjectGraph.mockResolvedValue({ schema_version: 3, marker: "core" });
     api.fetchReviewOrder.mockResolvedValue({ review_order: ["nd_core"] });
     api.fetchGitHistory.mockRejectedValue(new Error("History unavailable"));
 
@@ -339,7 +339,7 @@ describe("ProjectProvider Graph Diff history requests", () => {
     expect(firstHistorySignal?.aborted).toBe(true);
 
     await act(async () => {
-      secondProject.resolve({ schema_version: 2, marker: "reload-2" });
+      secondProject.resolve({ schema_version: 3, marker: "reload-2" });
       secondReview.resolve({ review_order: ["nd_reload_2"] });
       secondHistory.resolve(history([secondCommit]));
     });
@@ -383,8 +383,8 @@ describe("ProjectProvider Graph Diff history requests", () => {
 
     const firstDiff = deferred<GraphDiffResult>();
     api.fetchProjectGraph.mockReset()
-      .mockResolvedValueOnce({ schema_version: 2, marker: "reload-a" })
-      .mockResolvedValueOnce({ schema_version: 2, marker: "reload-b" });
+      .mockResolvedValueOnce({ schema_version: 3, marker: "reload-a" })
+      .mockResolvedValueOnce({ schema_version: 3, marker: "reload-b" });
     api.fetchReviewOrder.mockReset()
       .mockResolvedValueOnce({ review_order: ["nd_reload_a"] })
       .mockResolvedValueOnce({ review_order: ["nd_reload_b"] });

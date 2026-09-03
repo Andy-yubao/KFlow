@@ -34,7 +34,7 @@ vi.mock("./components/ReviewOrderPanel", () => ({
 
 const graph = {
   ok: true,
-  schema_version: 2,
+  schema_version: 3,
   project: {
     status: "current",
     node_count: 0,
@@ -75,7 +75,7 @@ beforeEach(() => {
   api.fetchGraphDiff.mockReset().mockResolvedValue({
     ok: true,
     available: false,
-    schema_version: 2,
+    schema_version: 3,
     base: null,
   });
   api.fetchRevision.mockReset().mockResolvedValue(revision);

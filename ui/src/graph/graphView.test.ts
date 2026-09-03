@@ -32,7 +32,7 @@ function project(): ProjectGraphResult {
   ];
   return {
     ok: true,
-    schema_version: 2,
+    schema_version: 3,
     project: {
       status: "attention_required",
       node_count: nodes.length,
@@ -44,6 +44,7 @@ function project(): ProjectGraphResult {
     derivations: [
       {
         id: "dv_architecture",
+        name: "architecture-design",
         short: "Synthesize architecture",
         detail: "Requirements and constraints shape the architecture.",
         inputs: ["nd_requirements", "nd_constraints"].map((id) => ({
@@ -63,6 +64,7 @@ function project(): ProjectGraphResult {
       },
       {
         id: "dv_api",
+        name: "api-design",
         short: "Define public API",
         detail: "",
         inputs: [
@@ -79,6 +81,7 @@ function project(): ProjectGraphResult {
       },
       {
         id: "dv_deploy",
+        name: "deployment-planning",
         short: "Plan deployment",
         detail: "",
         inputs: [

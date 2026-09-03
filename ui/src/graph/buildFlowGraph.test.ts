@@ -15,7 +15,7 @@ import {
 function manyToManyProject(): ProjectGraphResult {
   return {
     ok: true,
-    schema_version: 2,
+    schema_version: 3,
     project: {
       status: "attention_required",
       node_count: 4,
@@ -34,6 +34,7 @@ function manyToManyProject(): ProjectGraphResult {
     derivations: [
       {
         id: "dv_design",
+        name: "design",
         short: "Combine inputs into outputs",
         detail: "A single multi-input, multi-output derivation.",
         inputs: ["a", "b"].map((id) => ({
@@ -166,6 +167,7 @@ describe("buildFlowGraph", () => {
     });
     project.derivations.push({
       id: "dv_publish",
+      name: "publishing",
       short: "Publish output",
       detail: "",
       inputs: [
@@ -221,6 +223,7 @@ describe("buildFlowGraph", () => {
     );
     project.derivations.push({
       id: "dv_join",
+      name: "branch-join",
       short: "Join branches",
       detail: "",
       inputs: [

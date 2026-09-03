@@ -51,6 +51,7 @@ function result(): GraphDiffResult {
   };
   const derivation = {
     id: "dv_added",
+    name: "added-derivation",
     short: "Added Derivation",
     detail: "Added detail",
     inputs: [role],
@@ -59,7 +60,7 @@ function result(): GraphDiffResult {
   return {
     ok: true,
     available: true,
-    schema_version: 2,
+    schema_version: 3,
     base: {
       reference: "HEAD",
       commit: "a1b2c3d4",
@@ -104,9 +105,10 @@ function result(): GraphDiffResult {
       changed: [
         {
           id: "dv_changed",
-          changed_fields: ["short", "detail", "inputs", "outputs"],
+          changed_fields: ["name", "short", "detail", "inputs", "outputs"],
           before: {
             id: "dv_changed",
+            name: "legacy-api",
             short: "Legacy API derivation",
             detail: "",
             inputs: [
@@ -140,6 +142,7 @@ function result(): GraphDiffResult {
           },
           after: {
             id: "dv_changed",
+            name: "validated-api",
             short: "Validated API derivation",
             detail: "Produces the current API contract.",
             inputs: [
@@ -267,6 +270,8 @@ describe("GraphDiffPanel", () => {
       "docs/new.md",
       "Legacy API derivation",
       "Validated API derivation",
+      "legacy-api",
+      "validated-api",
       "Produces the current API contract.",
       "Legacy input",
       "Constraints",

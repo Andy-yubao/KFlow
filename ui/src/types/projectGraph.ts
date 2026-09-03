@@ -30,6 +30,7 @@ export interface DerivationRole {
 
 export interface DerivationResult {
   id: string;
+  name: string;
   short: string;
   detail: string;
   inputs: DerivationRole[];
@@ -80,7 +81,7 @@ export interface ChangedNode {
 
 export interface ChangedDerivation {
   id: string;
-  changed_fields: Array<"short" | "detail" | "inputs" | "outputs">;
+  changed_fields: Array<"name" | "short" | "detail" | "inputs" | "outputs">;
   before: DerivationResult;
   after: DerivationResult;
 }
@@ -114,7 +115,7 @@ export interface GitHistoryResult {
 export interface GraphDiffResult {
   ok: boolean;
   available: boolean;
-  schema_version: 2;
+  schema_version: 3;
   base: {
     reference: string;
     commit: string;

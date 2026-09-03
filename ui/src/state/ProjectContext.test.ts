@@ -55,7 +55,7 @@ describe("projectReducer", () => {
   });
 
   it("keeps Graph Diff request failures isolated from the loaded project graph", () => {
-    const graph = { schema_version: 2 } as never;
+    const graph = { schema_version: 3 } as never;
     const loaded = { ...initialProjectState, projectGraph: graph, loading: false };
     const failed = projectReducer(loaded, {
       type: "graphDiffFailed",
@@ -83,7 +83,7 @@ describe("projectReducer", () => {
       base: selectedCommit,
       requestId: 2,
     });
-    const staleResult = { schema_version: 2 } as never;
+    const staleResult = { schema_version: 3 } as never;
     const stale = projectReducer(loading, {
       type: "graphDiffLoaded",
       result: staleResult,
@@ -93,7 +93,7 @@ describe("projectReducer", () => {
     expect(stale.selectedGraphDiffBase).toBe(selectedCommit);
     expect(stale.graphDiffLoading).toBe(true);
 
-    const latestResult = { schema_version: 2 } as never;
+    const latestResult = { schema_version: 3 } as never;
     const latest = projectReducer(stale, {
       type: "graphDiffLoaded",
       result: latestResult,
@@ -175,7 +175,7 @@ describe("projectReducer", () => {
   });
 
   it("keeps old graph diff visible while a new request is loading", () => {
-    const oldDiff = { schema_version: 2 } as never;
+    const oldDiff = { schema_version: 3 } as never;
     const state = { ...initialProjectState, graphDiff: oldDiff };
     const loading = projectReducer(state, {
       type: "graphDiffLoading",

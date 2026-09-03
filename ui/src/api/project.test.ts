@@ -18,7 +18,7 @@ const earlierObjectId = "a1b2c3d4";
 const unavailableDiff = {
   ok: true,
   available: false,
-  schema_version: 2,
+  schema_version: 3,
   base: null,
   summary: null,
   nodes: { added: [], removed: [], changed: [] },
@@ -39,7 +39,7 @@ describe("read request cancellation", () => {
       issues: [],
     };
     const bodies = new Map<string, object>([
-      ["/api/project", { schema_version: 2, nodes: [], derivations: [] }],
+      ["/api/project", { schema_version: 3, nodes: [], derivations: [] }],
       [
         "/api/review-order",
         { schema_version: 3, review_order: [], issues: [] },
@@ -105,6 +105,7 @@ function availableDiff() {
   };
   const derivation = {
     id: "dv_derivation",
+    name: "derivation",
     short: "Derives facts",
     detail: "",
     inputs: [role],
@@ -113,7 +114,7 @@ function availableDiff() {
   return {
     ok: true,
     available: true,
-    schema_version: 2,
+    schema_version: 3,
     base: {
       reference: "HEAD",
       commit: earlierObjectId,
@@ -216,6 +217,7 @@ describe("parseGraphDiff", () => {
     ["non-boolean topology", (value: any) => { value.summary.topology_changed = "yes"; }],
     ["Node without files", (value: any) => { delete value.nodes.added[0].files; }],
     ["role without node", (value: any) => { delete value.derivations.added[0].inputs[0].node; }],
+    ["Derivation without name", (value: any) => { delete value.derivations.added[0].name; }],
     ["unknown changed Node field", (value: any) => { value.nodes.changed[0].changed_fields = ["status"]; }],
     ["mismatched Changed Node id", (value: any) => { value.nodes.changed[0].before.id = "other"; }],
     ["Changed Derivation without after", (value: any) => { delete value.derivations.changed[0].after; }],

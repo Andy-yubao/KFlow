@@ -214,6 +214,13 @@ function ChangedDerivationItem({ change }: { change: ChangedDerivation }) {
       </button>
       <div className="structural-changes">
         <h4>Structural changes</h4>
+        {change.changed_fields.includes("name") && (
+          <ScalarChange
+            label="Name"
+            before={change.before.name}
+            after={change.after.name}
+          />
+        )}
         {change.changed_fields.includes("short") && (
           <ScalarChange
             label="Short"

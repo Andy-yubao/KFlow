@@ -15,9 +15,9 @@ import type {
   StructuralNode,
 } from "../types/projectGraph";
 
-const SUPPORTED_SCHEMA_VERSION = 2;
+const SUPPORTED_SCHEMA_VERSION = 3;
 const REVIEW_ORDER_SCHEMA_VERSION = 3;
-const GRAPH_DIFF_SCHEMA_VERSION = 2;
+const GRAPH_DIFF_SCHEMA_VERSION = 3;
 const GIT_HISTORY_SCHEMA_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,7 +49,7 @@ function isStructuralNode(value: unknown): value is StructuralNode {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&
-    typeof value.name === "string" &&
+    isNonEmptyString(value.name) &&
     isStringArray(value.files)
   );
 }
@@ -68,6 +68,7 @@ function isDerivation(value: unknown): value is DerivationResult {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&
+    isNonEmptyString(value.name) &&
     typeof value.short === "string" &&
     typeof value.detail === "string" &&
     Array.isArray(value.inputs) &&
@@ -91,6 +92,7 @@ function hasAllowedChangedFields(
 
 const NODE_CHANGED_FIELDS = new Set(["name", "files"]);
 const DERIVATION_CHANGED_FIELDS = new Set([
+  "name",
   "short",
   "detail",
   "inputs",
@@ -171,7 +173,11 @@ function parseProjectGraph(value: unknown): ProjectGraphResult {
       `Unsupported KFlow schema version: ${String(value.schema_version)}.`,
     );
   }
-  if (!Array.isArray(value.nodes) || !Array.isArray(value.derivations)) {
+  if (
+    !Array.isArray(value.nodes) ||
+    !Array.isArray(value.derivations) ||
+    !value.derivations.every(isDerivation)
+  ) {
     throw new Error("The project graph is missing its nodes or derivations array.");
   }
   return value as unknown as ProjectGraphResult;

@@ -28,7 +28,7 @@ vi.mock("@xyflow/react", () => ({
 function graph(reason: string[] = []): ProjectGraphResult {
   return {
     ok: true,
-    schema_version: 2,
+    schema_version: 3,
     project: {
       status: reason.length ? "attention_required" : "current",
       node_count: 1,

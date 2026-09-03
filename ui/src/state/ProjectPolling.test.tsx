@@ -59,7 +59,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   api.fetchProjectGraph.mockReset().mockResolvedValue({
     ok: true,
-    schema_version: 2,
+    schema_version: 3,
     nodes: [],
     derivations: [],
     topological_order: [],
@@ -76,7 +76,7 @@ beforeEach(() => {
   api.fetchGraphDiff.mockReset().mockResolvedValue({
     ok: true,
     available: false,
-    schema_version: 2,
+    schema_version: 3,
     base: null,
   });
   api.fetchRevision.mockReset().mockResolvedValue(firstRevision);
@@ -184,7 +184,7 @@ describe("ProjectProvider revision polling", () => {
     api.fetchProjectGraph
       .mockResolvedValueOnce({
         ok: true,
-        schema_version: 2,
+        schema_version: 3,
         nodes: [],
         derivations: [],
         topological_order: [],
@@ -192,7 +192,7 @@ describe("ProjectProvider revision polling", () => {
       .mockRejectedValueOnce(new Error("temporary failure"))
       .mockResolvedValue({
         ok: true,
-        schema_version: 2,
+        schema_version: 3,
         nodes: [],
         derivations: [],
         topological_order: [],
@@ -266,7 +266,7 @@ describe("ProjectProvider revision polling", () => {
     api.fetchProjectGraph
       .mockResolvedValueOnce({
         ok: true,
-        schema_version: 2,
+        schema_version: 3,
         nodes: [],
         derivations: [],
         topological_order: [],
@@ -274,7 +274,7 @@ describe("ProjectProvider revision polling", () => {
       .mockRejectedValueOnce(new Error("manual failure"))
       .mockResolvedValue({
         ok: true,
-        schema_version: 2,
+        schema_version: 3,
         nodes: [],
         derivations: [],
         topological_order: [],
@@ -298,7 +298,7 @@ describe("ProjectProvider revision polling", () => {
   it("does not let an aborted old automatic failure overwrite manual success", async () => {
     const currentGraph = {
       ok: true,
-      schema_version: 2,
+      schema_version: 3,
       nodes: [],
       derivations: [],
       topological_order: [],

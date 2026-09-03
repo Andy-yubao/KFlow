@@ -65,6 +65,7 @@ describe("graph node cards", () => {
         kind: "derivation",
         derivation: {
           id: "dv_design",
+          name: "design",
           short,
           detail: "",
           inputs: [],
@@ -92,6 +93,7 @@ describe("graph node cards", () => {
     const short = "A complete Derivation short description";
     const derivation = {
       id: "dv_design",
+      name: "design",
       short,
       detail: "Detailed meaning.",
       inputs: [],

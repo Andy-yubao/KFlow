@@ -9,8 +9,10 @@ from kflow.core.graph import GraphValidationError, KnowledgeGraph
 from kflow.core.models import Derivation
 from kflow.core.scan import ScanIssue, ScanResult, resolve_node_id, scan
 from kflow.core.schema_versions import (
+    CONTEXT_SCHEMA_VERSION,
+    IMPACT_SCHEMA_VERSION,
     PROJECT_GRAPH_SCHEMA_VERSION,
-    TASK_QUERY_SCHEMA_VERSION,
+    REVIEW_ORDER_SCHEMA_VERSION,
 )
 from kflow.core.storage import StorageError
 
@@ -52,6 +54,7 @@ class DerivationResult(TypedDict):
     """One complete, atomic Derivation safe for Agent consumption."""
 
     id: str
+    name: str
     short: str
     detail: str
     inputs: list[DerivationRole]
@@ -117,10 +120,12 @@ class ReviewOrderResult(TypedDict):
 
 __all__ = [
     "ContextResult",
+    "CONTEXT_SCHEMA_VERSION",
     "ImpactResult",
+    "IMPACT_SCHEMA_VERSION",
     "PROJECT_GRAPH_SCHEMA_VERSION",
     "ProjectGraphResult",
-    "TASK_QUERY_SCHEMA_VERSION",
+    "REVIEW_ORDER_SCHEMA_VERSION",
     "ReviewOrderResult",
     "present_derivation",
     "query_context",
@@ -205,7 +210,7 @@ def query_context(root: Path, node_reference: str) -> ContextResult:
     ]
     return {
         "ok": not scanned.issues,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": CONTEXT_SCHEMA_VERSION,
         "node": _status_node(scanned, node_id),
         "nodes": nodes,
         "producing_derivation": (
@@ -243,7 +248,7 @@ def query_impact(root: Path, node_reference: str) -> ImpactResult:
     further_ids = reachable - direct_output_ids - {node_id}
     return {
         "ok": not scanned.issues,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": IMPACT_SCHEMA_VERSION,
         "node": _status_node(scanned, node_id),
         "direct_derivations": [
             present_derivation(graph, derivation) for derivation in direct_derivations
@@ -291,7 +296,7 @@ def query_review_order(
     ]
     return {
         "ok": not scanned.issues,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": REVIEW_ORDER_SCHEMA_VERSION,
         "scope": None if scope_id is None else _node_identity(graph, scope_id),
         "nodes": [_status_node(scanned, node_id) for node_id in review_ids],
         "review_order": review_ids,
@@ -323,6 +328,7 @@ def present_derivation(
     """Present one complete Derivation using canonical Node ID role ordering."""
     return {
         "id": derivation.id,
+        "name": derivation.name,
         "short": derivation.short,
         "detail": derivation.detail,
         "inputs": [
@@ -389,7 +395,7 @@ def _issues_from_error(error: Exception, reference: str | None) -> list[QueryIss
 def _context_error(error: Exception, reference: str) -> ContextResult:
     return {
         "ok": False,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": CONTEXT_SCHEMA_VERSION,
         "node": None,
         "nodes": [],
         "producing_derivation": None,
@@ -401,7 +407,7 @@ def _context_error(error: Exception, reference: str) -> ContextResult:
 def _impact_error(error: Exception, reference: str) -> ImpactResult:
     return {
         "ok": False,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": IMPACT_SCHEMA_VERSION,
         "node": None,
         "direct_derivations": [],
         "direct_outputs": [],
@@ -413,7 +419,7 @@ def _impact_error(error: Exception, reference: str) -> ImpactResult:
 def _review_order_error(error: Exception, reference: str | None) -> ReviewOrderResult:
     return {
         "ok": False,
-        "schema_version": TASK_QUERY_SCHEMA_VERSION,
+        "schema_version": REVIEW_ORDER_SCHEMA_VERSION,
         "scope": None,
         "nodes": [],
         "review_order": [],

@@ -7,7 +7,11 @@ from dataclasses import dataclass
 
 from kflow.core.graph import KnowledgeGraph
 from kflow.core.models import Fingerprint, NodeConfirmation
-from kflow.core.versioning import fingerprint_derivation, fingerprint_files
+from kflow.core.versioning import (
+    fingerprint_derivation,
+    fingerprint_files,
+    fingerprint_node,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,8 +75,12 @@ def _evaluate_node(
             if confirmed_files.get(path) != current_files.get(path)
         )
     )
-    if changed_files or confirmation.files_fingerprint != fingerprint_files(
-        current_files
+    current_files_fingerprint = fingerprint_files(current_files)
+    if (
+        changed_files
+        or confirmation.files_fingerprint != current_files_fingerprint
+        or confirmation.node_fingerprint
+        != fingerprint_node(node, current_files_fingerprint)
     ):
         reasons.append("files_changed")
 

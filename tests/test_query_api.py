@@ -43,7 +43,7 @@ def test_public_queries_have_separate_typed_results() -> None:
     assert get_type_hints(query_review_order)["return"] is ReviewOrderResult
 
 
-def test_query_results_use_v3_task_specific_shapes(tmp_path) -> None:
+def test_query_versions_change_only_for_derivation_shapes(tmp_path) -> None:
     prepare_project(tmp_path)
 
     context = query_context(tmp_path, "architecture")
@@ -76,11 +76,9 @@ def test_query_results_use_v3_task_specific_shapes(tmp_path) -> None:
         "review_order",
         "issues",
     }
-    assert {
-        context["schema_version"],
-        impact["schema_version"],
-        review["schema_version"],
-    } == {3}
+    assert context["schema_version"] == 4
+    assert impact["schema_version"] == 4
+    assert review["schema_version"] == 3
     assert "PRIVATE" not in json.dumps((context, impact, review))
 
 
@@ -105,9 +103,9 @@ def test_query_errors_keep_their_command_shape(tmp_path) -> None:
     assert context["node"] is None and context["consumer_derivations"] == []
     assert impact["node"] is None and impact["direct_derivations"] == []
     assert review["scope"] is None and review["review_order"] == []
-    for result in (context, impact, review):
+    for result, version in ((context, 4), (impact, 4), (review, 3)):
         assert result["ok"] is False
-        assert result["schema_version"] == 3
+        assert result["schema_version"] == version
         assert result["issues"][0] == {
             "code": "unknown_node",
             "message": "unknown node: missing",

@@ -119,6 +119,7 @@ def planning_graph() -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_design_and_testing",
+            "design-and-testing-planning",
             "Requirements shape design and testing plans",
             "One upstream brief produces two coordinated plans.",
             (input_role("nd_requirements", "Provides product goals"),),
@@ -149,6 +150,7 @@ def delivery_graph() -> KnowledgeGraph:
         *planning_graph().derivations.values(),
         Derivation(
             "dv_deployment",
+            "deployment-planning",
             "Design and security constraints shape deployment",
             "The deployable plan combines the API boundary with security limits.",
             (
@@ -162,6 +164,7 @@ def delivery_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_release",
+            "release-preparation",
             "Deployment plan produces the release checklist",
             "One delivery plan maps to one operational checklist.",
             (input_role("nd_deployment_plan", "Provides release steps"),),

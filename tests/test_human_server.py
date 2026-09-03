@@ -244,7 +244,7 @@ def test_graph_diff_endpoint_returns_adapter_json_without_affecting_project(
     expected = {
         "ok": True,
         "available": False,
-        "schema_version": 2,
+        "schema_version": 3,
         "base": None,
         "summary": None,
         "nodes": {"added": [], "removed": [], "changed": []},
@@ -304,7 +304,7 @@ def test_git_history_and_selected_graph_diff_endpoints_are_no_store(
     diff = {
         "ok": True,
         "available": False,
-        "schema_version": 2,
+        "schema_version": 3,
         "base": None,
         "summary": None,
         "nodes": {"added": [], "removed": [], "changed": []},

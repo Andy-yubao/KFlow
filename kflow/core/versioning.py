@@ -11,6 +11,7 @@ from kflow.core.models import (
     ConfirmationProducer,
     Derivation,
     Fingerprint,
+    KnowledgeNode,
     NodeConfirmation,
     _validate_repository_path,
 )
@@ -56,8 +57,9 @@ def fingerprint_derivation(derivation: Derivation) -> Fingerprint:
     """Fingerprint all topology and semantic facts in one derivation."""
     canonical = {
         "kind": "derivation",
-        "schema_version": 2,
+        "schema_version": 3,
         "id": derivation.id,
+        "name": derivation.name,
         "short": derivation.short,
         "detail": derivation.detail,
         "inputs": [
@@ -68,6 +70,20 @@ def fingerprint_derivation(derivation: Derivation) -> Fingerprint:
             {"node": item.node, "short": item.short, "detail": item.detail}
             for item in sorted(derivation.outputs, key=lambda value: value.node)
         ],
+    }
+    return Fingerprint("sha256", _sha256_canonical(canonical))
+
+
+def fingerprint_node(
+    node: KnowledgeNode, files_fingerprint: Fingerprint
+) -> Fingerprint:
+    """Fingerprint a Node's stable identity, editable name, and file facts."""
+    canonical = {
+        "kind": "node",
+        "schema_version": 3,
+        "id": node.id,
+        "name": node.name,
+        "files_fingerprint": _fingerprint_value(files_fingerprint),
     }
     return Fingerprint("sha256", _sha256_canonical(canonical))
 
@@ -89,9 +105,11 @@ def compute_effective_versions(
     versions: dict[str, str] = {}
     for node_id in graph.topological_order():
         producer = graph.producer_of(node_id)
-        files_fingerprint = _fingerprint_value(files_fingerprints[node_id])
+        node_fingerprint = _fingerprint_value(
+            fingerprint_node(graph.nodes[node_id], files_fingerprints[node_id])
+        )
         if producer is None:
-            versions[node_id] = _sha256_canonical([node_id, files_fingerprint])
+            versions[node_id] = _sha256_canonical([node_id, node_fingerprint])
             continue
         inputs = [
             [item.node, versions[item.node]]
@@ -100,7 +118,7 @@ def compute_effective_versions(
         versions[node_id] = _sha256_canonical(
             [
                 node_id,
-                files_fingerprint,
+                node_fingerprint,
                 _fingerprint_value(fingerprint_derivation(producer)),
                 inputs,
             ]
@@ -156,6 +174,7 @@ def build_confirmation(
         node=node_id,
         files=confirmed_files,
         files_fingerprint=aggregate,
+        node_fingerprint=fingerprint_node(node, aggregate),
         producing_derivation=confirmed_producer,
         inputs=confirmed_inputs,
         effective_version=effective_versions[node_id],

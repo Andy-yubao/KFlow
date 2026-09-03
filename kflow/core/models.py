@@ -91,6 +91,7 @@ class Derivation:
     """One complete many-input, many-output derivation activity."""
 
     id: str
+    name: str
     short: str
     detail: str
     inputs: tuple[DerivationInput, ...]
@@ -100,6 +101,7 @@ class Derivation:
         object.__setattr__(self, "inputs", tuple(self.inputs))
         object.__setattr__(self, "outputs", tuple(self.outputs))
         _require_text(self.id, "derivation id")
+        _require_text(self.name, "derivation name")
         _require_text(self.short, "derivation short")
         _require_optional_text(self.detail, "derivation detail")
         if not self.inputs:
@@ -179,6 +181,7 @@ class NodeConfirmation:
     node: str
     files: tuple[ConfirmationFile, ...]
     files_fingerprint: Fingerprint
+    node_fingerprint: Fingerprint
     producing_derivation: ConfirmationProducer | None
     inputs: tuple[ConfirmationInput, ...]
     effective_version: str
@@ -196,6 +199,8 @@ class NodeConfirmation:
             raise ValueError("confirmation files must not contain duplicate paths")
         if not isinstance(self.files_fingerprint, Fingerprint):
             raise ValueError("confirmation files fingerprint must be a Fingerprint")
+        if not isinstance(self.node_fingerprint, Fingerprint):
+            raise ValueError("confirmation node fingerprint must be a Fingerprint")
         if self.producing_derivation is not None and not isinstance(
             self.producing_derivation, ConfirmationProducer
         ):

@@ -31,6 +31,7 @@ def test_domain_collections_are_normalized_to_immutable_tuples():
     node = KnowledgeNode(id="nd_a", name="a", files=["docs/a.md"])
     derivation = Derivation(
         id="dv_ab",
+        name="a-to-b",
         short="形成 B",
         detail="",
         inputs=[DerivationInput("nd_a", "使用 A", "")],
@@ -61,6 +62,7 @@ def test_node_rejects_invalid_file_sets(files):
 def test_derivation_supports_multiple_inputs_and_outputs():
     derivation = Derivation(
         id="dv_design",
+        name="design",
         short="形成设计",
         detail="",
         inputs=(
@@ -77,10 +79,23 @@ def test_derivation_supports_multiple_inputs_and_outputs():
     assert tuple(item.node for item in derivation.outputs) == ("nd_c", "nd_d")
 
 
+def test_derivation_name_is_required():
+    with pytest.raises(ValueError, match="derivation name must be non-empty text"):
+        Derivation(
+            id="dv_ab",
+            name=" ",
+            short="形成 B",
+            detail="",
+            inputs=(DerivationInput("nd_a", "使用 A", ""),),
+            outputs=(DerivationOutput("nd_b", "形成 B", ""),),
+        )
+
+
 @pytest.mark.parametrize("empty_side", ["inputs", "outputs"])
 def test_derivation_rejects_empty_endpoints(empty_side):
     kwargs = {
         "id": "dv_ab",
+        "name": "a-to-b",
         "short": "形成 B",
         "detail": "",
         "inputs": (DerivationInput("nd_a", "使用 A", ""),),
@@ -96,6 +111,7 @@ def test_derivation_rejects_duplicate_or_overlapping_endpoints():
     with pytest.raises(ValueError):
         Derivation(
             id="dv_duplicate",
+            name="duplicate",
             short="重复输入",
             detail="",
             inputs=(
@@ -108,6 +124,7 @@ def test_derivation_rejects_duplicate_or_overlapping_endpoints():
     with pytest.raises(ValueError):
         Derivation(
             id="dv_overlap",
+            name="overlap",
             short="自环",
             detail="",
             inputs=(DerivationInput("nd_a", "输入 A", ""),),
@@ -118,6 +135,7 @@ def test_derivation_rejects_duplicate_or_overlapping_endpoints():
 def test_all_derivation_detail_fields_accept_canonical_empty_string():
     derivation = Derivation(
         id="dv_ab",
+        name="a-to-b",
         short="形成 B",
         detail="",
         inputs=(DerivationInput("nd_a", "使用 A", ""),),
@@ -137,6 +155,7 @@ def test_all_derivation_short_fields_require_non_empty_text(level):
     with pytest.raises(ValueError):
         Derivation(
             id="dv_ab",
+            name="a-to-b",
             short=" " if level == "derivation" else "形成 B",
             detail="",
             inputs=(DerivationInput("nd_a", input_short, ""),),
@@ -158,6 +177,7 @@ def test_source_confirmation_records_exactly_one_node_without_producer_inputs():
         node="nd_a",
         files=(ConfirmationFile("docs/a.md", Fingerprint("sha256", SHA_A)),),
         files_fingerprint=Fingerprint("sha256", SHA_B),
+        node_fingerprint=Fingerprint("sha256", SHA_A),
         producing_derivation=None,
         inputs=(),
         effective_version=SHA_A,
@@ -176,6 +196,7 @@ def test_derived_confirmation_requires_producer_and_direct_inputs_together():
         node="nd_b",
         files=(file_fact,),
         files_fingerprint=Fingerprint("sha256", SHA_A),
+        node_fingerprint=Fingerprint("sha256", SHA_B),
         producing_derivation=producer,
         inputs=(ConfirmationInput("nd_a", SHA_A),),
         effective_version=SHA_B,
@@ -187,6 +208,7 @@ def test_derived_confirmation_requires_producer_and_direct_inputs_together():
             node="nd_b",
             files=(file_fact,),
             files_fingerprint=Fingerprint("sha256", SHA_A),
+            node_fingerprint=Fingerprint("sha256", SHA_B),
             producing_derivation=producer,
             inputs=(),
             effective_version=SHA_B,

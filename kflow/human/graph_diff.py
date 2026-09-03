@@ -78,9 +78,9 @@ class GraphDiffResult(TypedDict):
     issues: list[QueryIssue]
 
 
-GRAPH_DIFF_SCHEMA_VERSION = 2
+GRAPH_DIFF_SCHEMA_VERSION = 3
 NODE_FIELDS = ("name", "files")
-DERIVATION_FIELDS = ("short", "detail", "inputs", "outputs")
+DERIVATION_FIELDS = ("name", "short", "detail", "inputs", "outputs")
 
 
 def compare_project_graphs(
@@ -196,6 +196,7 @@ def _structural_node(node: dict) -> StructuralNode:
 def _structural_derivation(derivation: DerivationResult) -> DerivationResult:
     return {
         "id": derivation["id"],
+        "name": derivation["name"],
         "short": derivation["short"],
         "detail": derivation["detail"],
         "inputs": _structural_roles(derivation["inputs"]),

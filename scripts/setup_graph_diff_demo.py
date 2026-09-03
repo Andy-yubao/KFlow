@@ -126,6 +126,7 @@ def baseline_graph() -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_architecture",
+            "architecture-design",
             "Requirements and constraints shape architecture",
             "Product goals and operating limits jointly determine the structure.",
             (
@@ -136,6 +137,7 @@ def baseline_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_api_design",
+            "api-design",
             "Architecture defines API design",
             "System boundaries determine the local interface.",
             (
@@ -152,6 +154,7 @@ def baseline_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_delivery",
+            "delivery-planning",
             "Architecture drives delivery plans",
             "The same architecture informs deployment and testing.",
             (input_role("nd_architecture", "Provides runtime boundaries"),),
@@ -162,6 +165,7 @@ def baseline_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_legacy_reference",
+            "legacy-reference",
             "API design retains a legacy reference",
             "The baseline preserves one historical reference for removal.",
             (input_role("nd_api_design", "Provides historical endpoints"),),
@@ -181,6 +185,7 @@ def initial_graph() -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_architecture",
+            "architecture-design",
             "Requirements and constraints shape architecture",
             "Product goals and operating limits jointly determine the structure.",
             (
@@ -191,6 +196,7 @@ def initial_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_api_design",
+            "api-design",
             "Architecture defines API design",
             "System boundaries determine the local interface.",
             (
@@ -201,6 +207,7 @@ def initial_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_delivery",
+            "delivery-planning",
             "Architecture drives delivery plans",
             "The same architecture informs deployment and testing.",
             (input_role("nd_architecture", "Provides runtime boundaries"),),
@@ -240,6 +247,7 @@ def current_graph() -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_architecture",
+            "architecture-design",
             "Requirements and constraints shape architecture",
             "Product goals and operating limits jointly determine the structure.",
             (
@@ -250,6 +258,7 @@ def current_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_api_design",
+            "api-design",
             "Validated architecture defines the public API",
             "Current boundaries and operating limits determine the interface.",
             (
@@ -279,6 +288,7 @@ def current_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_delivery",
+            "delivery-planning",
             "Architecture drives delivery plans",
             "The same architecture informs deployment and testing.",
             (input_role("nd_architecture", "Provides runtime boundaries"),),
@@ -289,6 +299,7 @@ def current_graph() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_operations",
+            "operations-planning",
             "Deployment plan defines operations",
             "Launch and packaging decisions determine the operator workflow.",
             (input_role("nd_deployment_plan", "Provides launch decisions"),),

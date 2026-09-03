@@ -25,6 +25,7 @@ def derive(
 ) -> Derivation:
     return Derivation(
         id=derivation_id,
+        name=derivation_id.removeprefix("dv_"),
         short="形成下游知识",
         detail="",
         inputs=tuple(
@@ -84,6 +85,35 @@ def test_graph_requires_unique_names_and_file_ownership():
     codes = issue_codes(exc.value)
     assert "duplicate_node_name" in codes
     assert "duplicate_file_owner" in codes
+
+
+def test_derivation_names_are_unique_but_do_not_share_node_namespace():
+    nodes = (
+        node("nd_a", name="same", file="docs/a.md"),
+        node("nd_b", name="b", file="docs/b.md"),
+        node("nd_c", name="c", file="docs/c.md"),
+    )
+    first = Derivation(
+        "dv_one",
+        "same",
+        "first",
+        "",
+        (DerivationInput("nd_a", "input", ""),),
+        (DerivationOutput("nd_b", "output", ""),),
+    )
+    second = Derivation(
+        "dv_two",
+        "same",
+        "second",
+        "",
+        (DerivationInput("nd_b", "input", ""),),
+        (DerivationOutput("nd_c", "output", ""),),
+    )
+
+    assert KnowledgeGraph.build(nodes, (first,)).derivations[first.id] == first
+    with pytest.raises(GraphValidationError) as exc:
+        KnowledgeGraph.build(nodes, (first, second))
+    assert "duplicate_derivation_name" in issue_codes(exc.value)
 
 
 def test_graph_rejects_missing_references():

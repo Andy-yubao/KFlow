@@ -17,6 +17,7 @@ def build_chain() -> KnowledgeGraph:
     derivations = (
         Derivation(
             "dv_ab",
+            "a-to-b",
             "形成 B",
             "",
             (DerivationInput("nd_a", "使用 A", ""),),
@@ -24,6 +25,7 @@ def build_chain() -> KnowledgeGraph:
         ),
         Derivation(
             "dv_bc",
+            "b-to-c",
             "形成 C",
             "",
             (DerivationInput("nd_b", "使用 B", ""),),

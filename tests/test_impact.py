@@ -17,6 +17,7 @@ def prepare_impact_graph(tmp_path) -> None:
     derivations = (
         Derivation(
             "dv_ab_cd",
+            "combine-a-b",
             "Combine A and B",
             "",
             (
@@ -30,6 +31,7 @@ def prepare_impact_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_a_e",
+            "use-a-for-e",
             "Use A for E",
             "",
             (DerivationInput("nd_a", "A second role", ""),),
@@ -37,6 +39,7 @@ def prepare_impact_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_cde_f",
+            "converge-at-f",
             "Converge at F",
             "",
             (
@@ -48,6 +51,7 @@ def prepare_impact_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_f_g",
+            "continue-to-g",
             "Continue to G",
             "",
             (DerivationInput("nd_f", "F role", ""),),

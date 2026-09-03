@@ -20,6 +20,7 @@ def prepare_many_to_many_project(tmp_path) -> None:
     )
     derivation = Derivation(
         "dv_design",
+        "design",
         "形成 C 和 D",
         "保留多输入、多输出语义。",
         (
@@ -47,7 +48,7 @@ def test_project_graph_is_a_public_typed_query_with_stable_empty_result(tmp_path
     assert get_type_hints(query_project_graph)["return"] is ProjectGraphResult
     assert result == {
         "ok": True,
-        "schema_version": 2,
+        "schema_version": 3,
         "project": {
             "status": "current",
             "node_count": 0,
@@ -90,6 +91,7 @@ def test_project_graph_preserves_all_facts_statuses_and_deterministic_order(tmp_
     assert result["derivations"] == [
         {
             "id": "dv_design",
+            "name": "design",
             "short": "形成 C 和 D",
             "detail": "保留多输入、多输出语义。",
             "inputs": [
@@ -125,7 +127,7 @@ def test_project_graph_preserves_all_facts_statuses_and_deterministic_order(tmp_
     assert "PRIVATE CONTENT" not in json.dumps(result, ensure_ascii=False)
 
 
-def test_project_graph_v2_keeps_machine_order_independent_from_topology(tmp_path):
+def test_project_graph_v3_keeps_machine_order_independent_from_topology(tmp_path):
     nodes = (
         KnowledgeNode("nd_z_source", "source", ("docs/source.md",)),
         KnowledgeNode("nd_m_peer", "peer", ("docs/peer.md",)),
@@ -135,6 +137,7 @@ def test_project_graph_v2_keeps_machine_order_independent_from_topology(tmp_path
     derivations = (
         Derivation(
             "dv_z_first",
+            "first",
             "First in topology",
             "",
             (DerivationInput("nd_z_source", "source role", ""),),
@@ -142,6 +145,7 @@ def test_project_graph_v2_keeps_machine_order_independent_from_topology(tmp_path
         ),
         Derivation(
             "dv_a_second",
+            "second",
             "Second in topology",
             "",
             (
@@ -193,7 +197,7 @@ def test_project_graph_uninitialized_error_keeps_stable_shape(tmp_path):
     result = query_project_graph(tmp_path)
 
     assert result["ok"] is False
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == 3
     assert result["project"]["status"] == "invalid"
     assert result["nodes"] == []
     assert result["derivations"] == []

@@ -20,6 +20,7 @@ def prepare_review_graph(tmp_path) -> KnowledgeGraph:
         (
             Derivation(
                 "dv_ab_c",
+                "combine-roots",
                 "Combine roots",
                 "",
                 (
@@ -30,6 +31,7 @@ def prepare_review_graph(tmp_path) -> KnowledgeGraph:
             ),
             Derivation(
                 "dv_c_d",
+                "continue-once",
                 "Continue once",
                 "",
                 (DerivationInput("nd_c", "C role", ""),),
@@ -85,6 +87,7 @@ def test_derivation_changes_and_unconfirmed_nodes_are_review_items(tmp_path) -> 
         tmp_path,
         Derivation(
             "dv_c_d",
+            "continue-once",
             "Changed derivation",
             "",
             (DerivationInput("nd_c", "C changed role", ""),),

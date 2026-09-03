@@ -35,6 +35,7 @@ def _derivation(
 ):
     return {
         "id": derivation_id,
+        "name": derivation_id.removeprefix("dv_"),
         "short": short,
         "detail": detail,
         "inputs": [_role(node_id) for node_id in inputs],
@@ -47,7 +48,7 @@ def _graph(nodes, derivations=(), order=None):
     derivations = list(derivations)
     return {
         "ok": True,
-        "schema_version": 2,
+        "schema_version": 3,
         "project": {
             "status": "current",
             "node_count": len(nodes),
@@ -130,6 +131,7 @@ def test_nodes_are_aligned_by_id_and_compare_only_public_structure():
 def test_derivations_preserve_complete_many_to_many_semantics_and_role_changes():
     before_derivation = _derivation("dv_design", ["nd_a", "nd_b"], ["nd_c", "nd_d"])
     after_derivation = deepcopy(before_derivation)
+    after_derivation["name"] = "updated-design"
     after_derivation["short"] = "Updated short"
     after_derivation["detail"] = "Updated detail"
     after_derivation["inputs"][0]["short"] = "Updated input role"
@@ -155,7 +157,13 @@ def test_derivations_preserve_complete_many_to_many_semantics_and_role_changes()
     assert [item["id"] for item in result["derivations"]["removed"]] == ["dv_removed"]
     changed = result["derivations"]["changed"][0]
     assert changed["id"] == "dv_design"
-    assert changed["changed_fields"] == ["short", "detail", "inputs", "outputs"]
+    assert changed["changed_fields"] == [
+        "name",
+        "short",
+        "detail",
+        "inputs",
+        "outputs",
+    ]
     assert [role["node"] for role in changed["before"]["inputs"]] == [
         "nd_a",
         "nd_b",

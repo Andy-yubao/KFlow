@@ -265,6 +265,7 @@ def test_project_revision_covers_confirmations_nodes_and_derivations(tmp_path) -
 
     add_derivation(
         tmp_path,
+        "derive-output",
         "derive output",
         "",
         ((source.id, "input", ""),),

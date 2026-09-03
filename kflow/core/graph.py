@@ -64,6 +64,7 @@ class KnowledgeGraph:
         derivation_map = _unique_by_id(derivation_list, "derivation", issues)
 
         _validate_unique_node_names(node_list, issues)
+        _validate_unique_derivation_names(derivation_list, issues)
         _validate_unique_file_owners(node_list, issues)
         _validate_references(node_map, derivation_list, issues)
 
@@ -167,6 +168,23 @@ def _validate_unique_node_names(
                     "duplicate_node_name",
                     f"node name has multiple owners: {name}",
                     tuple(sorted(node_ids)),
+                )
+            )
+
+
+def _validate_unique_derivation_names(
+    derivations: tuple[Derivation, ...], issues: list[ValidationIssue]
+) -> None:
+    owners: dict[str, list[str]] = defaultdict(list)
+    for derivation in derivations:
+        owners[derivation.name].append(derivation.id)
+    for name, derivation_ids in sorted(owners.items()):
+        if len(derivation_ids) > 1:
+            issues.append(
+                ValidationIssue(
+                    "duplicate_derivation_name",
+                    f"derivation name has multiple owners: {name}",
+                    tuple(sorted(derivation_ids)),
                 )
             )
 

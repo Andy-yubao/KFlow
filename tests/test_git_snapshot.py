@@ -48,6 +48,7 @@ def _committed_project(root: Path, project_relative: str = "."):
     node_b = add_node(project, "B", ("docs/b.md",))
     derivation = Derivation(
         "dv_design",
+        "design",
         "A creates B",
         "Initial detail.",
         (DerivationInput(node_a.id, "Use A", ""),),
@@ -119,6 +120,7 @@ def test_diff_against_head_detects_added_node_changed_derivation_and_topology(tm
         project,
         Derivation(
             original.id,
+            original.name,
             "A creates B and C",
             "Changed in the working tree.",
             original.inputs,

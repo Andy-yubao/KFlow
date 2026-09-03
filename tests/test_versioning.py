@@ -1,5 +1,7 @@
 import pytest
 
+from dataclasses import replace
+
 from kflow.core.graph import KnowledgeGraph
 from kflow.core.models import (
     Derivation,
@@ -24,6 +26,7 @@ def build_chain(detail: str = "根据 A 形成 B。") -> KnowledgeGraph:
     derivations = [
         Derivation(
             "dv_ab",
+            "a-to-b",
             "形成 B",
             detail,
             (DerivationInput("nd_a", "使用 A", ""),),
@@ -85,9 +88,30 @@ def test_derivation_semantic_change_changes_its_output_version():
     assert before["nd_b"] != after["nd_b"]
 
 
+def test_entity_name_changes_participate_in_effective_versions():
+    graph = build_chain("detail")
+    files = files_fingerprints()
+    before = compute_effective_versions(graph, files)
+
+    renamed_node = replace(graph.nodes["nd_a"], name="renamed-a")
+    node_graph = KnowledgeGraph.build(
+        (renamed_node, graph.nodes["nd_b"]), graph.derivations.values()
+    )
+    after_node = compute_effective_versions(node_graph, files)
+    assert before["nd_a"] != after_node["nd_a"]
+    assert before["nd_b"] != after_node["nd_b"]
+
+    renamed_derivation = replace(graph.derivations["dv_ab"], name="renamed-flow")
+    derivation_graph = KnowledgeGraph.build(graph.nodes.values(), (renamed_derivation,))
+    after_derivation = compute_effective_versions(derivation_graph, files)
+    assert before["nd_a"] == after_derivation["nd_a"]
+    assert before["nd_b"] != after_derivation["nd_b"]
+
+
 def test_derivation_fingerprint_is_independent_of_endpoint_order():
     first = Derivation(
         "dv_design",
+        "design",
         "形成设计",
         "",
         (
@@ -101,6 +125,7 @@ def test_derivation_fingerprint_is_independent_of_endpoint_order():
     )
     reversed_endpoints = Derivation(
         first.id,
+        first.name,
         first.short,
         first.detail,
         tuple(reversed(first.inputs)),
@@ -139,6 +164,7 @@ def test_many_to_many_input_and_derivation_changes_reach_every_output():
             [
                 Derivation(
                     "dv_design",
+                    "design",
                     "形成 C 和 D",
                     detail,
                     (
@@ -182,6 +208,7 @@ def test_build_confirmation_is_single_node_and_does_not_change_versions_or_sibli
     ]
     derivation = Derivation(
         "dv_outputs",
+        "outputs",
         "形成 C 和 D",
         "",
         (DerivationInput("nd_a", "使用 A", ""),),

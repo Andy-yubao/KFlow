@@ -20,6 +20,7 @@ def prepare_local_graph(tmp_path) -> None:
     derivations = (
         Derivation(
             "dv_ab_cd",
+            "combine-a-b",
             "Combine A and B",
             "",
             (
@@ -33,6 +34,7 @@ def prepare_local_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_c_e",
+            "use-c-for-e",
             "Use C for E",
             "",
             (DerivationInput("nd_c", "C consumer role", ""),),
@@ -40,6 +42,7 @@ def prepare_local_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_cd_f",
+            "use-c-d-for-f",
             "Use C and D for F",
             "",
             (
@@ -50,6 +53,7 @@ def prepare_local_graph(tmp_path) -> None:
         ),
         Derivation(
             "dv_e_g",
+            "use-e-for-g",
             "Use E for G",
             "",
             (DerivationInput("nd_e", "E role", ""),),

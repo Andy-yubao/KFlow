@@ -27,6 +27,7 @@ def prepare_complex_project(tmp_path) -> KnowledgeGraph:
         (
             Derivation(
                 "dv_requirements_architecture",
+                "requirements-architecture",
                 "由需求形成架构",
                 "",
                 (DerivationInput("nd_requirements", "提供需求", ""),),
@@ -34,6 +35,7 @@ def prepare_complex_project(tmp_path) -> KnowledgeGraph:
             ),
             Derivation(
                 "dv_architecture_designs",
+                "architecture-designs",
                 "由架构形成软硬件设计",
                 "",
                 (DerivationInput("nd_architecture", "提供架构", ""),),
@@ -44,6 +46,7 @@ def prepare_complex_project(tmp_path) -> KnowledgeGraph:
             ),
             Derivation(
                 "dv_designs_implementation",
+                "designs-implementation",
                 "综合软硬件设计形成实现",
                 "",
                 (
@@ -54,6 +57,7 @@ def prepare_complex_project(tmp_path) -> KnowledgeGraph:
             ),
             Derivation(
                 "dv_implementation_tests",
+                "implementation-tests",
                 "由实现形成测试",
                 "",
                 (DerivationInput("nd_implementation", "提供实现", ""),),

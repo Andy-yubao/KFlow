@@ -29,6 +29,7 @@ def build_many_to_many_graph() -> KnowledgeGraph:
     )
     derivation = Derivation(
         "dv_design",
+        "design",
         "形成 C 和 D",
         "保留多输入、多输出语义。",
         (
@@ -90,8 +91,9 @@ def test_storage_uses_typed_records_and_stable_endpoint_order(tmp_path):
     )
 
     assert node_data["kind"] == "node"
-    assert node_data["schema_version"] == 2
+    assert node_data["schema_version"] == 3
     assert derivation_data["kind"] == "derivation"
+    assert derivation_data["name"] == "design"
     assert [item["node"] for item in derivation_data["inputs"]] == ["nd_a", "nd_b"]
     assert [item["node"] for item in derivation_data["outputs"]] == ["nd_c", "nd_d"]
     assert not tuple((tmp_path / ".kflow").rglob("*.tmp"))

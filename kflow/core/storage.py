@@ -79,6 +79,35 @@ def save_confirmation(root: Path, confirmation: NodeConfirmation) -> None:
     )
 
 
+def delete_derivation(root: Path, derivation_id: str) -> None:
+    """Remove exactly one Derivation metadata file."""
+    metadata = _require_project(root)
+    path = metadata / "derivations" / f"{derivation_id}.json"
+    _stage_and_delete(path)
+
+
+def delete_node_and_confirmation(root: Path, node_id: str) -> None:
+    """Remove one Node and its optional Confirmation with simple rollback."""
+    metadata = _require_project(root)
+    node_path = metadata / "nodes" / f"{node_id}.json"
+    confirmation_path = metadata / "confirmations" / f"{node_id}.json"
+    staged_confirmation = _stage_for_delete(confirmation_path)
+    try:
+        staged_node = _stage_for_delete(node_path)
+    except Exception:
+        if staged_confirmation is not None:
+            os.replace(staged_confirmation, confirmation_path)
+        raise
+    for staged in (staged_confirmation, staged_node):
+        if staged is not None:
+            try:
+                staged.unlink()
+            except OSError:
+                # Both canonical paths are already absent. A stale hidden staging
+                # file is safe and can be cleaned later without corrupting the graph.
+                pass
+
+
 def load_graph(root: Path) -> KnowledgeGraph:
     """Load canonical facts and rebuild all graph indexes."""
     metadata = _require_project(root)
@@ -135,6 +164,31 @@ def _write_json(path: Path, value: dict) -> None:
             temporary.unlink()
 
 
+def _stage_for_delete(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.removed")
+    try:
+        os.replace(path, temporary)
+    except OSError as error:
+        raise StorageError(f"cannot remove KFlow metadata {path}: {error}") from error
+    return temporary
+
+
+def _stage_and_delete(path: Path) -> None:
+    staged = _stage_for_delete(path)
+    if staged is None:
+        raise StorageError(f"KFlow metadata does not exist: {path}")
+    try:
+        staged.unlink()
+    except OSError as error:
+        try:
+            os.replace(staged, path)
+        except OSError:
+            pass
+        raise StorageError(f"cannot remove KFlow metadata {path}: {error}") from error
+
+
 def _read_json(path: Path) -> dict:
     try:
         with path.open(encoding="utf-8") as stream:
@@ -153,6 +207,15 @@ def _expect_header(value: dict, kind: str) -> None:
         raise StorageError(
             f"unsupported schema version: {value.get('schema_version')!r}"
         )
+
+
+def _required(value: dict, field: str, kind: str):
+    try:
+        return value[field]
+    except KeyError:
+        raise StorageError(
+            f"{kind} metadata is missing required field: {field}"
+        ) from None
 
 
 def _encode_node(node: KnowledgeNode) -> dict:
@@ -180,6 +243,7 @@ def _encode_derivation(derivation: Derivation) -> dict:
         "kind": "derivation",
         "schema_version": METADATA_SCHEMA_VERSION,
         "id": derivation.id,
+        "name": derivation.name,
         "short": derivation.short,
         "detail": derivation.detail,
         "inputs": [
@@ -196,16 +260,17 @@ def _encode_derivation(derivation: Derivation) -> dict:
 def _decode_derivation(value: dict, expected_id: str) -> Derivation:
     _expect_header(value, "derivation")
     derivation = Derivation(
-        value["id"],
-        value["short"],
-        value["detail"],
+        _required(value, "id", "derivation"),
+        _required(value, "name", "derivation"),
+        _required(value, "short", "derivation"),
+        _required(value, "detail", "derivation"),
         tuple(
             DerivationInput(item["node"], item["short"], item["detail"])
-            for item in value["inputs"]
+            for item in _required(value, "inputs", "derivation")
         ),
         tuple(
             DerivationOutput(item["node"], item["short"], item["detail"])
-            for item in value["outputs"]
+            for item in _required(value, "outputs", "derivation")
         ),
     )
     if derivation.id != expected_id:
@@ -235,6 +300,7 @@ def _encode_confirmation(confirmation: NodeConfirmation) -> dict:
             for item in sorted(confirmation.files, key=lambda item: item.path)
         ],
         "files_fingerprint": _encode_fingerprint(confirmation.files_fingerprint),
+        "node_fingerprint": _encode_fingerprint(confirmation.node_fingerprint),
         "producing_derivation": (
             None
             if producer is None
@@ -266,6 +332,7 @@ def _decode_confirmation(value: dict, expected_node: str) -> NodeConfirmation:
             for item in value["files"]
         ),
         files_fingerprint=_decode_fingerprint(value["files_fingerprint"]),
+        node_fingerprint=_decode_fingerprint(value["node_fingerprint"]),
         producing_derivation=producer,
         inputs=tuple(
             ConfirmationInput(item["node"], item["effective_version"])

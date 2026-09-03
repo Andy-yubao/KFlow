@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -23,7 +24,7 @@ def test_noun_first_entity_lifecycle_text_and_json(tmp_path, monkeypatch, capsys
         (docs / f"{name}.md").write_text(name, encoding="utf-8")
     _json(capsys, "init")
 
-    source = _json(capsys, "node", "add", "输入", "--file", "docs\\输入 文档.md")
+    source = _json(capsys, "node", "add", "输入", "--file", "docs/输入 文档.md")
     assert source["schema_version"] == 4
     assert source["node"]["files"] == ["docs/输入 文档.md"]
     assert _text(capsys, "node", "add", "output", "--file", "docs/output.md") == (
@@ -94,6 +95,19 @@ def test_noun_first_entity_lifecycle_text_and_json(tmp_path, monkeypatch, capsys
     assert _text(capsys, "node", "remove", "renamed-output") == (
         "Removed Node: renamed-output\n"
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows path separator behavior")
+def test_node_add_accepts_windows_path_separators(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "输入 文档.md").write_text("input", encoding="utf-8")
+    _json(capsys, "init")
+
+    result = _json(capsys, "node", "add", "输入", "--file", "docs\\输入 文档.md")
+
+    assert result["node"]["files"] == ["docs/输入 文档.md"]
 
 
 @pytest.mark.parametrize("old_command", ["add-node", "derive"])

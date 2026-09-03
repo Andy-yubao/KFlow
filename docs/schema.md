@@ -12,6 +12,7 @@ KFlow 的不同机器协议独立版本化：
 | Project Graph | 3 | `query_project_graph`、`overview --json`、Human Interface |
 | Context / Impact | 4 | `context`、`impact` |
 | Review Order / Confirm / Validate | 3 | shape 未改变的任务结果 |
+| Downstream Confirm | 1 | `confirm NODE --downstream` |
 | Entity Mutation | 4 | `node add/edit/remove`、`derivation add/edit/remove` |
 | Argument Error | 3 | argparse 最小错误封套 |
 
@@ -165,7 +166,83 @@ Node 数组按稳定全局拓扑序，`further_downstream` 不包含状态或路
 
 `scope` 在全项目查询时为 `null`；指定 Node 时为该 NodeIdentity。`nodes` 只包含范围内 reasons 非空的 StatusNode，按稳定拓扑序。`review_order` 是同一顺序的 Node ID 数组，供 Human Interface 等已有消费者直接关联完整项目图。
 
-## 7. Mutation 与 validate
+## 7. DownstreamConfirmResult v1
+
+`confirm NODE --downstream` 使用独立 result kind，不改动普通单 Node confirm 的 v3 shape。普通 `confirm NODE` 返回目标、确认前后状态和复用全项目 review order 得到的 `next`，保持完全不变。
+
+### 成功 shape
+
+```json
+{
+  "ok": true,
+  "schema_version": 1,
+  "scope": {
+    "id": "nd_requirements",
+    "name": "requirements",
+    "files": ["docs/requirements.md"]
+  },
+  "confirmed": [
+    {
+      "id": "nd_requirements",
+      "name": "requirements",
+      "files": ["docs/requirements.md"]
+    }
+  ],
+  "skipped_current": [],
+  "remaining": [],
+  "issues": []
+}
+```
+
+- `scope`：解析后的目标 NodeIdentity；
+- `confirmed`：本次实际写入当前 baseline 的 NodeIdentity，按稳定拓扑序；已 current 的 Node 不进入；
+- `skipped_current`：范围内已 current、因此未重写的 NodeIdentity，按稳定拓扑序；
+- `remaining`：收尾时范围内仍 needs_review 的 StatusNode（正常清空后为空）；
+- `issues`：查询 issue。
+
+### 部分失败 shape
+
+运行期失败（例如某次写入 I/O 异常）保留此前已确认的 Node，并明确报告停止点。该操作不是跨整个 scope 的原子事务：
+
+```json
+{
+  "ok": false,
+  "schema_version": 1,
+  "scope": {
+    "id": "nd_requirements",
+    "name": "requirements",
+    "files": ["docs/requirements.md"]
+  },
+  "confirmed": [
+    {
+      "id": "nd_requirements",
+      "name": "requirements",
+      "files": ["docs/requirements.md"]
+    }
+  ],
+  "skipped_current": [],
+  "remaining": [],
+  "failed_node": {
+    "id": "nd_api_design",
+    "name": "api-design",
+    "files": ["docs/api.md"]
+  },
+  "issues": [
+    {
+      "code": "io_error",
+      "message": "cannot confirm node api-design: simulated write failure",
+      "references": ["nd_api_design"]
+    }
+  ]
+}
+```
+
+- `failed_node`：停止处的 NodeIdentity；整批无法开始时为 `null`；
+- `confirmed`：仍携带本次已成功写入的 NodeIdentity。
+
+初始 scan 已存在 validation issue 时，在写入任何 Confirmation 前拒绝：`ok` 为 `false`、`confirmed` 为空、`failed_node` 为 `null`、`issues` 携带这些 scan issue。KFlow 不做语义推断；是否整个 downstream scope 可确认由调用者断言。
+
+## 8. Mutation 与 validate
 
 `node add/edit/remove` 与 `derivation add/edit/remove` 使用 v4 mutation envelope，返回 stable ID 和完整规范实体。edit 结果同时返回 `previous_name`。Derivation 的完整实体包含 `name`、`short`、`detail`、`inputs` 与 `outputs`。
 
@@ -177,7 +254,7 @@ validate 成功：
 {"ok": true, "schema_version": 3, "issues": []}
 ```
 
-## 8. 错误
+## 9. 错误
 
 参数解析错误使用最小合法封套：
 
@@ -197,7 +274,7 @@ validate 成功：
 
 领域查询错误保留对应 ContextResult、ImpactResult、ReviewOrderResult 或 ProjectGraphResult 的完整 shape，相关数据数组为空。JSON stdout 不混入 usage 或普通文本。
 
-## 9. 兼容性规则
+## 10. 兼容性规则
 
 - 相同协议版本保持顶层字段、字段类型和字段语义；
 - 新增破坏性字段要求、删除字段或改变字段语义时提升对应协议版本；

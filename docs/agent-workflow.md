@@ -82,7 +82,23 @@ Confirmation 一次只更新一个 Node，不级联。成功后读取 `Confirmed
 kflow review-order
 ```
 
-## 6. 结束验收
+普通逐 Node confirm 是唯一默认流程。批量收尾是受限能力，见第 6 节。
+
+## 6. 受限：显式批量确认
+
+`confirm NODE --downstream` 只在 Agent 已能判断整个 downstream scope（目标及其全部可达下游）无需逐 Node 重新分析时才使用。典型场景是纯机械修正：拼写、标点、排版、格式化、明显机械性路径 / 命名修正，或整个 scope 已被一次性完整审查：
+
+```bash
+kflow confirm requirements --downstream
+```
+
+执行时 KFlow 只把范围内当前仍 needs_review 的 Node 按稳定全局拓扑序写入 Confirmation；已 current 的 Node 不重写。它不做语义推断，不判断“下游一定正确”；中途失败保留已写入部分并明确报告失败 Node，不是原子事务。
+
+必须逐 Node 阅读才能判断是否正确 → 不要 `--downstream`。涉及需求 / 接口 / 架构 / 算法 / 行为 / 约束 / 依赖 / Derivation 定义 / Node 定义等语义变化 → 禁止 `--downstream`。拿不准 → 普通 `review-order` + 单 Node `confirm`。
+
+rename（`node edit` / `derivation edit`）照常触发 review；只有当你确认整个 downstream scope 只受机械 rename 影响时才可 `confirm ROOT --downstream` 收尾，ROOT 使用 edit 后当前有效的 Node reference。完整允许 / 禁止清单见 [KFlow Agent Skill](kflow_skills.md)。
+
+## 7. 结束验收
 
 ```bash
 kflow review-order
@@ -95,7 +111,7 @@ kflow validate
 - 输出 `KFlow metadata is valid.`；
 - 任务需要的真实文件测试或检查已经完成。
 
-## 7. 建图操作
+## 8. 建图操作
 
 新知识只有在值得长期保存来源与影响时才登记：
 
@@ -111,7 +127,7 @@ kflow derivation add architecture-to-plans --short "架构形成接口和测试"
 
 不得把多输入、多输出推导拆成意义不完整的二元边，也不得根据正文或文件名自动猜测关系。
 
-## 8. 实体维护
+## 9. 实体维护
 
 已登记实体的定义或关系变化使用 edit/remove 维护，不要另建重名实体。定位一律使用精确旧 name，不接受 ID、文件路径或模糊匹配：
 
@@ -130,11 +146,11 @@ Node 不再属于 KFlow → node remove
 
 KFlow 维护的是知识实体定义与推导关系，不是正文。不要混用：定义变化走 edit/remove；正文内容变化而不涉及定义时无需改动图。Agent 仍通过编辑器读取和修改真实文件，修改后用 `review-order` + `confirm` 收尾。
 
-## 9. Agent 边界
+## 10. Agent 边界
 
 - 不把 `affected` 解释为文件一定错误；
 - 不在未阅读目标文件时确认；
-- 不级联确认多个 Node；
+- 不使用自动或默认级联确认；批量收尾只允许显式 `--downstream` 且满足第 6 节条件；
 - 不解析默认文本作为稳定机器协议；
 - 不期待 KFlow 返回正文、摘要、片段或 Prompt；
 - 不把未登记文件自动加入图。

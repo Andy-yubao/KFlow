@@ -41,12 +41,63 @@ Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 3. 完成真实判断和必要验证后，单独确认该 Node；
 4. 新 Node 只登记值得长期保存来源与影响的完整文件；
 5. 新 Derivation 必须保存一次完整 N-to-M 语义；
-6. 已登记实体定义变化使用 `node edit` / `derivation edit` 完整替换，失效关系使用 `remove`，不另建重名实体。
+6. 已登记实体定义变化使用 `node edit` / `derivation edit` 完整替换，失效关系使用 `remove`，不另建重名实体；
+7. 只有确有充分理由时才使用受限的 `confirm NODE --downstream`（见下节）。
+
+## 显式批量确认：`confirm NODE --downstream`（受限能力）
+
+普通 `kflow confirm NODE` 永远是安全默认：一次只确认一个你实际检查过的 Node，不级联。
+
+`confirm NODE --downstream` 是显式、更强的批量 assertion：
+
+- scope = NODE + 从它可达的全部 downstream Node；
+- 只把范围内当前仍 `needs_review` 的 Node 按稳定全局拓扑顺序写入当前 Confirmation；
+- 已经 current 的 Node 不会被重写，也不会进入 confirmed 结果；
+- 每个 Node 都使用现有单 Node confirm 逐次确认；KFlow 不做语义推断，不判断“下游一定正确”，只执行你明确发出的批量 assertion；
+- 中途失败时，之前已确认的 Node 保留，失败 Node 及其后不再继续；该操作不是跨整个 scope 的原子事务。
+
+### 允许使用
+
+只有当你已有充分理由判断整个 downstream scope 无需逐 Node 重新分析时才可使用，典型是纯机械、不改变知识语义的修正：
+
+- 纯拼写修正；
+- 标点 / 排版 / 格式修正；
+- 修复后不改变含义、接口、约束或行为的机械语法修正；
+- 明显机械性的路径 / 命名修正；
+- 整个 downstream scope 已经由人工或 Agent 一次性完整审查过。
+
+### 禁止或需要逐 Node
+
+以下情况必须逐 Node 阅读并走普通 `review-order` + `confirm`，禁止 `--downstream`：
+
+- 需求 / 接口 / 架构 / 算法 / 约束 / 数据格式 / 行为 / 依赖关系变化；
+- Derivation 定义变化；
+- Node files / name 等实体定义变化；
+- 不确定影响范围的修改；
+- 任何可能改变下游结论的语义修改。
+
+“代码语法错误”不自动等于安全：修复可能改变程序行为。
+
+### rename 与 downstream
+
+- Node / Derivation rename 照常触发 review；
+- KFlow 不替你判断 rename 是否安全；
+- 只有当你确认整个 downstream scope 只受机械 rename 影响时，才可 `confirm ROOT --downstream` 一次性收尾；ROOT 使用 edit 后当前有效的 Node reference。
+
+### 决策规则
+
+- 需要逐个打开 downstream Node 才能判断它是否仍正确 → 不要 `--downstream`；
+- 已能在当前证据下确认整个 downstream scope 不受语义影响 → 可以 `--downstream`；
+- 拿不准 → 使用普通 `review-order` + 单 Node `confirm`。
+
+### 禁止自动调用
+
+不要因为检测到 typo 或 rename 就自动 downstream confirm，也不要制定“所有 rename / formatting 都 downstream confirm”这种固定规则。是否使用由 Agent 基于具体任务判断。
 
 ## 禁止行为
 
 - 未阅读目标文件就确认；
-- 级联确认下游或 sibling output；
+- 自动或默认级联确认；批量确认只允许显式 `confirm NODE --downstream`；
 - 把 `affected` 当成必然错误；
 - 把默认文本当作稳定机器协议；
 - 自动登记未受管文件；

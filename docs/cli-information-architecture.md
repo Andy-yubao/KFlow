@@ -24,7 +24,7 @@ kflow context NODE
 kflow impact NODE
 kflow review-order [NODE]
 
-kflow confirm NODE
+kflow confirm NODE [--downstream]
 kflow validate
 
 kflow ui start
@@ -228,6 +228,57 @@ Confirmed: implementation
 Current review scope is clear.
 ```
 
+### 9.1 `confirm NODE --downstream`
+
+`confirm NODE` 保持单 Node 语义与默认文本完全不变。`confirm NODE --downstream` 是显式批量 assertion：范围 = NODE + 全部可达 downstream；只写入范围内当前仍 needs_review 的 Node 的当前 Confirmation，已 current 的 Node 不重写，顺序使用稳定全局拓扑序。KFlow 不判断“下游一定正确”，只执行调用者明确发出的批量确认。
+
+```text
+Confirmed downstream from: requirements
+
+1. requirements
+2. architecture
+3. api-design
+4. testing-plan
+
+4 nodes confirmed.
+Review scope is clear.
+```
+
+root 已 current 但 downstream 仍 affected 时，只列出实际确认的 Node，root 不进入 confirmed 列表：
+
+```text
+Confirmed downstream from: requirements
+
+1. api-design
+2. testing-plan
+
+2 nodes confirmed.
+Review scope is clear.
+```
+
+整个 scope 无 review debt 时成功且不写任何 Confirmation：
+
+```text
+No nodes need confirmation from requirements.
+Review scope is clear.
+```
+
+运行期失败（例如某次写入 I/O 异常）保留此前已写入的 Confirmation，并明确报告失败 Node 与已确认部分；该操作不是跨整个 scope 的原子事务：
+
+```text
+Confirmed downstream from: requirements
+
+Confirmed:
+1. requirements
+2. architecture
+
+Stopped at: api-design
+Reason:
+- io_error: cannot confirm node api-design: simulated write failure
+```
+
+初始 scan 若已存在 validation issue，会在写入任何 Confirmation 前拒绝。文本输出只使用 Node 名称，不展示内部 ID。
+
 ## 10. 校验、空结果与错误
 
 成功校验：
@@ -280,4 +331,4 @@ constraints
 
 Git 跟踪的 Node、Derivation、Confirmation 和 project manifest 使用存储 schema v3。完整项目图 `ProjectGraphResult` 使用 v3，因为 Derivation 增加 required `name`。
 
-`context` 与 `impact` 因完整 Derivation shape 改变使用 v4；shape 未改变的 `review-order`、`confirm` 和 `validate` 保持 v3；实体 mutation 使用 v4。`overview` 和 Human Interface Graph Diff 各自使用 v3。消费者必须按具体 result kind 读取 `schema_version`，不能把版本号当成全仓库单一格式版本。
+`context` 与 `impact` 因完整 Derivation shape 改变使用 v4；shape 未改变的 `review-order`、`confirm` 和 `validate` 保持 v3；实体 mutation 使用 v4。`overview` 和 Human Interface Graph Diff 各自使用 v3。`confirm NODE --downstream` 是新的批量 result kind，使用独立 Downstream Confirm v1，与普通单 Node confirm 的 v3 互不影响。消费者必须按具体 result kind 读取 `schema_version`，不能把版本号当成全仓库单一格式版本。

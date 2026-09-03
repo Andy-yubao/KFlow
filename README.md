@@ -167,7 +167,7 @@ kflow context NODE
 kflow impact NODE
 kflow review-order [NODE]
 
-kflow confirm NODE
+kflow confirm NODE [--downstream]
 kflow validate
 
 kflow ui start
@@ -188,6 +188,8 @@ Node reference 可以是精确 Node ID、唯一名称或已登记文件路径。
 
 默认文本面向人和直接阅读终端的 Agent，使用 Node 名称，不展示随机内部 ID。详细文本语义和 golden outputs 见 [CLI 信息架构](docs/cli-information-architecture.md)。
 
+`confirm NODE --downstream` 是显式批量 assertion：只清空目标及其可达下游中当前确实存在的 review debt，已 current 的 Node 不重写。它不是默认，也不改变普通 `confirm NODE` 的单 Node 语义。默认流程仍是逐 Node `review-order` + `confirm`；`--downstream` 只用于确有充分理由的机械性收尾。允许 / 禁止场景与决策规则见 [KFlow Agent Skill](docs/kflow_skills.md) 与 [Agent 工作流](docs/agent-workflow.md)。
+
 ## 机器接口与 `--json`
 
 直接操作终端的 Agent 使用上面的默认文本闭环。MCP、IDE、自动化脚本和其他程序化消费者应使用 JSON，不解析默认文本：
@@ -201,7 +203,7 @@ kflow review-order --json
 kflow review-order architecture --json
 ```
 
-完整项目图使用 `schema_version: 3`，供程序化 Agent 适配器和 Human Interface 共享。包含完整 Derivation 的 `context` 与 `impact` 使用 v4，`review-order` 保持 v3，实体 mutation 使用 v4。Git 跟踪的 metadata schema 为 v3。具体字段见 [机器契约](docs/schema.md)。
+完整项目图使用 `schema_version: 3`，供程序化 Agent 适配器和 Human Interface 共享。包含完整 Derivation 的 `context` 与 `impact` 使用 v4，`review-order` 与单 Node `confirm` 保持 v3，实体 mutation 使用 v4。`confirm NODE --downstream` 使用独立 Downstream Confirm v1，不改动单 Node confirm 的 v3 shape。Git 跟踪的 metadata schema 为 v3。具体字段见 [机器契约](docs/schema.md)。
 
 JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序和 validation issues，不包含正文、片段、自动摘要或 Prompt。Human Interface 生命周期命令不支持 `--json`；其他公开命令支持把 `--json` 放在子命令前或后。
 

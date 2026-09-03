@@ -14,7 +14,7 @@ KFlow 只提供结构、直接关系、影响范围、原因和检查顺序。�
 
 ### Derivation
 
-一个或多个输入知识如何形成一个或多个输出知识的显式推导。Derivation 是不可拆分的一等实体，支持 1-to-1、1-to-N、N-to-1 和 N-to-M，不退化成普通二元边。
+一个或多个输入知识如何形成一个或多个输出知识的显式推导。Derivation 拥有 stable ID、项目内唯一且可编辑的 `name`、一句话语义摘要 `short` 和可选的 `detail`。它是不可拆分的一等实体，支持 1-to-1、1-to-N、N-to-1 和 N-to-M，不退化成普通二元边。
 
 ### Confirmation
 
@@ -52,20 +52,20 @@ PowerShell 可将第二行写成 `Set-Location kflow-quickstart`。脚本只创�
 
 ```bash
 kflow init
-kflow add-node requirements --file docs/requirements.md
-kflow add-node constraints --file docs/constraints.md
-kflow add-node architecture --file docs/architecture.md
-kflow add-node api-design --file docs/api-design.md
-kflow add-node testing-plan --file docs/testing-plan.md
-kflow add-node deployment-plan --file docs/deployment-plan.md
+kflow node add requirements --file docs/requirements.md
+kflow node add constraints --file docs/constraints.md
+kflow node add architecture --file docs/architecture.md
+kflow node add api-design --file docs/api-design.md
+kflow node add testing-plan --file docs/testing-plan.md
+kflow node add deployment-plan --file docs/deployment-plan.md
 ```
 
 #### 3. 声明完整 Derivation
 
 ```bash
-kflow derive --short "需求与约束形成架构" --input requirements "提供产品目标" --input constraints "提供运行边界" --output architecture "形成系统结构"
-kflow derive --short "架构形成接口与测试方案" --input architecture "提供组件边界" --output api-design "形成接口设计" --output testing-plan "形成测试方案"
-kflow derive --short "接口设计形成部署方案" --input api-design "提供运行接口" --output deployment-plan "形成部署计划"
+kflow derivation add requirements-to-architecture --short "需求与约束形成架构" --input requirements "提供产品目标" --input constraints "提供运行边界" --output architecture "形成系统结构"
+kflow derivation add architecture-to-plans --short "架构形成接口与测试方案" --input architecture "提供组件边界" --output api-design "形成接口设计" --output testing-plan "形成测试方案"
+kflow derivation add api-to-deployment --short "接口设计形成部署方案" --input api-design "提供运行接口" --output deployment-plan "形成部署计划"
 ```
 
 KFlow 不根据文件名或正文猜测关系。每条命令保存一次完整推导，因此多输入和多输出的原子语义不会丢失。
@@ -155,8 +155,12 @@ kflow review-order
 
 ```text
 kflow init [PATH]
-kflow add-node NAME --file PATH [...]
-kflow derive ...
+kflow node add NAME --file PATH [...]
+kflow node edit OLD_NAME --name NEW_NAME --file PATH [...]
+kflow node remove NAME
+kflow derivation add NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation remove NAME
 
 kflow overview [--status]
 kflow context NODE
@@ -197,7 +201,7 @@ kflow review-order --json
 kflow review-order architecture --json
 ```
 
-完整项目图保持 `schema_version: 2`，供程序化 Agent 适配器和 Human Interface 共享。按任务拆分的 `context`、`impact`、`review-order` 以及 CLI operation envelope 使用 query schema v3。Git 跟踪的 metadata schema 仍为 v2。具体字段见 [机器契约](docs/schema.md)。
+完整项目图使用 `schema_version: 3`，供程序化 Agent 适配器和 Human Interface 共享。包含完整 Derivation 的 `context` 与 `impact` 使用 v4，`review-order` 保持 v3，实体 mutation 使用 v4。Git 跟踪的 metadata schema 为 v3。具体字段见 [机器契约](docs/schema.md)。
 
 JSON 只包含登记路径、Node、完整 Derivation、状态、原因、顺序和 validation issues，不包含正文、片段、自动摘要或 Prompt。Human Interface 生命周期命令不支持 `--json`；其他公开命令支持把 `--json` 放在子命令前或后。
 

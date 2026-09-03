@@ -12,8 +12,12 @@
 
 ```text
 kflow init [PATH]
-kflow add-node NAME --file PATH [...]
-kflow derive ...
+kflow node add NAME --file PATH [...]
+kflow node edit OLD_NAME --name NEW_NAME --file PATH [...]
+kflow node remove NAME
+kflow derivation add NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation remove NAME
 
 kflow overview [--status]
 kflow context NODE
@@ -43,13 +47,13 @@ Node reference 可以是精确 Node ID、唯一名称或已登记文件路径；
 
 Node 使用 Core graph 的稳定拓扑顺序：所有上游先于下游；同时可用的 Node 以稳定 Node ID 打破平局。
 
-`overview` 的默认文本把 Project Graph v2 投影为阅读顺序。Derivation 按以下键排序：
+`overview` 的默认文本把 Project Graph v3 投影为阅读顺序。Derivation 按以下键排序：
 
 1. 最早 output Node 的拓扑位置；
 2. 其余 output Node 的拓扑位置序列；
 3. Derivation ID 作为最终内部 tie-breaker。
 
-Derivation 内的 inputs 和 outputs 均按 Node 拓扑位置排序。默认文本不展示用于稳定排序的 ID。这个展示投影不改变 Project Graph v2 的冻结机器顺序：`derivations` 按 Derivation ID，角色按 Node ID。
+Derivation 内的 inputs 和 outputs 均按 Node 拓扑位置排序。默认文本不展示用于稳定排序的 ID。这个展示投影不改变 Project Graph v3 的冻结机器顺序：`derivations` 按 Derivation ID，角色按 Node ID。
 
 ## 4. 标准 Derivation 文本格式
 
@@ -206,7 +210,9 @@ Review order from: architecture
 
 默认文本只对需要检查的 Node 显示 reasons。reason 顺序由领域状态算法规范化；显示时使用 `unconfirmed`、`files changed`、`derivation changed`、`input changed`。多个 reason 使用逗号连接。
 
-内部 Node/Derivation ID 只进入 `--json`。`add-node`、`derive` 等创建命令的 JSON 仍返回新身份；其默认成功文本使用名称和语义。
+内部 Node/Derivation ID 只进入 `--json`。实体维护命令的 JSON 返回 stable ID 与完整规范实体；默认文本使用正式 name，例如 `Added Node: architecture` 与 `Edited Derivation: architecture-design -> system-design`。
+
+Node 与 Derivation 的 edit/remove 只接受精确旧 name，不接受 ID、文件路径、output Node、short 或模糊匹配。edit 必须完整重新声明新定义；`--detail` 省略时规范化为空字符串，不表示沿用旧值。Node remove 只允许完全没有 Derivation 引用的 Node，且只删除其 metadata 和 Confirmation；Derivation remove 不删除任何 Node 或 Confirmation。
 
 `confirm NODE` 一次只确认一个 Node。确认后复用全项目 `review-order` 选择下一项：
 
@@ -272,6 +278,6 @@ constraints
 
 ## 12. 机器版本边界
 
-Git 跟踪的 Node、Derivation、Confirmation 和 project manifest 继续使用存储 schema v2。完整项目图 `ProjectGraphResult` 保持 v2，以维持 Human Interface 的公共图协议。
+Git 跟踪的 Node、Derivation、Confirmation 和 project manifest 使用存储 schema v3。完整项目图 `ProjectGraphResult` 使用 v3，因为 Derivation 增加 required `name`。
 
-`context`、`impact` 和 `review-order` 的旧共享查询封套改变为三个按任务定义的结果类型，因此这些查询和相应 CLI JSON 使用 query schema v3。普通 mutation、`overview` 和 Human Interface graph diff 各自遵循其文档化协议版本；消费者必须按具体 result kind 读取 `schema_version`，不能把版本号当成全仓库单一格式版本。
+`context` 与 `impact` 因完整 Derivation shape 改变使用 v4；shape 未改变的 `review-order`、`confirm` 和 `validate` 保持 v3；实体 mutation 使用 v4。`overview` 和 Human Interface Graph Diff 各自使用 v3。消费者必须按具体 result kind 读取 `schema_version`，不能把版本号当成全仓库单一格式版本。

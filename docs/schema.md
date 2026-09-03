@@ -8,13 +8,18 @@ KFlow 有三个独立协议边界：
 
 | 协议 | 当前版本 | 使用者 |
 |---|---:|---|
-| Git metadata | 2 | `.kflow/project.json`、Node、Derivation、Confirmation |
-| Project Graph | 2 | `query_project_graph`、`overview --json`、Human Interface |
-| Task Query / CLI operation | 3 | `context`、`impact`、`review-order`、mutation、validate、参数错误 |
+| Git metadata | 3 | `.kflow/project.json`、Node、Derivation、Confirmation |
+| Project Graph | 3 | `query_project_graph`、`overview --json`、Human Interface |
+| Context / Impact | 4 | `context`、`impact` |
+| Review Order / Confirm / Validate | 3 | shape 未改变的任务结果 |
+| Entity Mutation | 4 | `node add/edit/remove`、`derivation add/edit/remove` |
+| Argument Error | 3 | argparse 最小错误封套 |
 
-Graph Diff 仍是独立 v2 协议，Git History 是独立 v1 协议。消费者必须按具体 result kind 解释 `schema_version`。
+Graph Diff 是独立 v3 协议，Git History 是独立 v1 协议。消费者必须按具体 result kind 解释 `schema_version`。
 
 query schema 从 v2 升至 v3，因为旧共享封套中的 `relations`、`impact`、`review_order` 同时承载多种语义；v3 将其拆成三个不同结果 shape，并把 `context` 改为严格一跳关系。
+
+Metadata v3 是 clean break：manifest、Node、Derivation 与 Confirmation 必须全部声明 `schema_version: 3`。Derivation 必须包含 `name`；Confirmation 必须包含 `node_fingerprint`。v2 输入或缺失 required `name` 的 Derivation 会被明确拒绝，不存在 `short -> name` fallback。
 
 ## 2. 公共字段
 
@@ -58,6 +63,7 @@ query schema 从 v2 升至 v3，因为旧共享封套中的 `relations`、`impac
 ```json
 {
   "id": "dv_opaque",
+  "name": "architecture-design",
   "short": "Define system architecture",
   "detail": "",
   "inputs": [
@@ -81,12 +87,12 @@ query schema 从 v2 升至 v3，因为旧共享封套中的 `relations`、`impac
 
 Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。`inputs` 与 `outputs` 各自按规范 Node ID 排序。
 
-## 3. ProjectGraphResult v2
+## 3. ProjectGraphResult v3
 
 ```json
 {
   "ok": true,
-  "schema_version": 2,
+  "schema_version": 3,
   "project": {
     "status": "attention_required",
     "node_count": 6,
@@ -101,14 +107,14 @@ Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。`inputs` 
 }
 ```
 
-`nodes` 按 `topological_order`；`derivations` 按 Derivation ID 排序；每个 Derivation 的 `inputs` 与 `outputs` 各自按规范 Node ID 排序。这些是冻结的 Project Graph v2 数组顺序，与默认文本为了阅读而采用的拓扑投影相互独立。
+`nodes` 按 `topological_order`；`derivations` 按 Derivation ID 排序；每个 Derivation 的 `inputs` 与 `outputs` 各自按规范 Node ID 排序。这些是冻结的 Project Graph v3 数组顺序，与默认文本为了阅读而采用的拓扑投影相互独立。v3 的 breaking change 是每个 Derivation 都包含 required、unique `name`。
 
-## 4. ContextResult v3
+## 4. ContextResult v4
 
 ```json
 {
   "ok": true,
-  "schema_version": 3,
+  "schema_version": 4,
   "node": {},
   "nodes": [],
   "producing_derivation": null,
@@ -124,12 +130,12 @@ Derivation 保留完整 inputs/outputs，不投影为笛卡尔积边。`inputs` 
 
 不包含传递 upstream/downstream、影响路径或项目 review order。
 
-## 5. ImpactResult v3
+## 5. ImpactResult v4
 
 ```json
 {
   "ok": true,
-  "schema_version": 3,
+  "schema_version": 4,
   "node": {},
   "direct_derivations": [],
   "direct_outputs": [],
@@ -161,7 +167,9 @@ Node 数组按稳定全局拓扑序，`further_downstream` 不包含状态或路
 
 ## 7. Mutation 与 validate
 
-`init`、`add-node`、`derive`、`confirm` 和 `validate` 使用 v3 operation envelope。创建结果返回新 identity；`confirm` 返回目标、确认前后状态，以及复用全项目 review order 得到的 `next` StatusNode 或 `null`。
+`node add/edit/remove` 与 `derivation add/edit/remove` 使用 v4 mutation envelope，返回 stable ID 和完整规范实体。edit 结果同时返回 `previous_name`。Derivation 的完整实体包含 `name`、`short`、`detail`、`inputs` 与 `outputs`。
+
+`init`、`confirm` 和 `validate` 的 shape 未改变，保持 v3。`confirm` 返回目标、确认前后状态，以及复用全项目 review order 得到的 `next` StatusNode 或 `null`。
 
 validate 成功：
 

@@ -4,7 +4,7 @@
 
 ## 与 README Quickstart 的分工
 
-README Quickstart Part 1 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`add-node`、`derive` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播；它不要求 Git 仓库。
+README Quickstart Part 1 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`node add`、`derivation add` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播；它不要求 Git 仓库。
 
 Quickstart Part 2 是可选的下一阶段。`scripts/setup_git_quickstart_demo.py` 一次性创建独立的真实 Git 仓库、三个结构提交、可选择的历史基准和有意保留的工作树变化，用于低成本体验 Git-backed UI。它不是生产 CLI，也不替代 Part 1。
 

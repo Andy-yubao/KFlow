@@ -44,7 +44,7 @@ kflow review-order architecture --json
 
 stdout 只包含一个 JSON object。查询领域错误保留该命令的完整结果 shape，并使用 `ok: false` 和非空 `issues`。参数解析错误使用最小 envelope：`ok`、`schema_version`、`issues`。
 
-完整项目图使用 v2；按任务拆分的查询和 CLI operation envelope 使用 v3；持久化 metadata 使用 v2。具体 shape 见 [机器契约](schema.md)。
+完整项目图使用 v3；包含完整 Derivation 的 context/impact 使用 v4；review-order 与 confirm/validate 保持 v3；实体 mutation 使用 v4；持久化 metadata 使用 v3。具体 shape 见 [机器契约](schema.md)。
 
 ## 安全边界
 

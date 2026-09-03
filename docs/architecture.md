@@ -50,7 +50,7 @@ Human Interface 的技术边界、运行流程与演进阶段见 [Human Interfac
 
 ```yaml
 kind: kflow-project
-schema_version: 2
+schema_version: 3
 ```
 
 Manifest 只标识项目和机器契约大版本，不保存可重建索引或计数。
@@ -59,7 +59,7 @@ Manifest 只标识项目和机器契约大版本，不保存可重建索引或�
 
 ```yaml
 kind: node
-schema_version: 2
+schema_version: 3
 id: nd_opaque_stable_id
 name: architecture
 files:
@@ -68,7 +68,7 @@ files:
 ```
 
 - `id` 是不依赖名称或路径的稳定身份。
-- `name` 在项目内唯一。
+- `name` 在 Node 集合内唯一且可编辑；改名不改变 stable ID。
 - `files` 是共同构成一个知识单元的非空完整文件集合。
 - 没有 producing Derivation 的 Node 自动视为源 Node；孤立 Node 合法。
 - Node 不保存类型、摘要、正文、颜色或 Derivation 反向引用。
@@ -77,8 +77,9 @@ files:
 
 ```yaml
 kind: derivation
-schema_version: 2
+schema_version: 3
 id: dv_opaque_stable_id
+name: architecture-design
 short: 综合需求与约束形成系统设计
 detail: 根据功能需求和部署约束确定组件边界。
 inputs:
@@ -91,7 +92,7 @@ outputs:
     detail: 确定组件边界与数据流。
 ```
 
-Derivation 是一次不可拆分的多输入、多输出推导活动，不是若干独立二元边。
+Derivation 是一次不可拆分的多输入、多输出推导活动，不是若干独立二元边。`name` 是项目内唯一且可编辑的人类寻址名称；改名不改变 stable ID。
 
 - inputs 和 outputs 均非空。
 - 拓扑只由端点 Node 决定。
@@ -104,6 +105,7 @@ Derivation 是一次不可拆分的多输入、多输出推导活动，不是若
 Confirmation 保存某个 Node 最近一次完成检查时的版本基线：
 
 - 当时的完整文件集合及 fingerprint；
+- 当时包含 stable ID、name 与文件事实的 Node definition fingerprint；
 - 当时的 files fingerprint 与 effective version；
 - 派生 Node 当时的 producing Derivation 及 fingerprint；
 - 派生 Node 当时的直接输入 effective version 向量。
@@ -123,7 +125,7 @@ Confirmation 保存某个 Node 最近一次完成检查时的版本基线：
 
 ### Derivation 与图
 
-1. Derivation ID 全局唯一且不可变。
+1. Derivation ID 全局唯一且不可变，name 在 Derivation 集合内唯一；Node 与 Derivation 不共享 namespace。
 2. inputs、outputs 均至少一个且各自不得重复。
 3. 所有引用的 Node 必须存在。
 4. 每个 Node 至多出现在一个 Derivation 的 outputs 中。
@@ -144,19 +146,20 @@ Confirmation 保存某个 Node 最近一次完成检查时的版本基线：
 ```text
 file_fingerprint = SHA256(raw file bytes)
 files_fingerprint = SHA256(canonical [(path, file_fingerprint)])
+node_fingerprint = SHA256(node.id, node.name, files_fingerprint)
 derivation_fingerprint = SHA256(canonical derivation JSON)
 ```
 
-路径属于 files fingerprint，因此重命名会被识别为变化，但不改变 Node ID。
+路径属于 files fingerprint；Node name 属于 node fingerprint；Derivation name 属于 derivation fingerprint。因此路径或实体改名都会被识别为变化，但不改变 stable ID。
 
 effective version 按 DAG 拓扑序计算：
 
 ```text
-source_version(node) = SHA256(node.id, files_fingerprint)
+source_version(node) = SHA256(node.id, node_fingerprint)
 
 derived_version(node) = SHA256(
   node.id,
-  files_fingerprint,
+  node_fingerprint,
   producer_fingerprint,
   sorted direct input effective versions
 )
@@ -194,6 +197,12 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 3. 不写任何其他 Confirmation。
 4. 返回确认前原因、确认后状态和剩余待检查摘要。
 
+### 实体维护
+
+Node 与 Derivation edit 都以精确旧 name 定位，并用完整新定义替换，同时保持 stable ID 和现有 Confirmation。Node name 改变复用 `files_changed`，其下游通过 effective version 得到 `input_changed`；Derivation name 改变使 output Node 得到 `derivation_changed`，更远下游得到 `input_changed`。不增加 rename 专用 reason。
+
+Node remove 只允许完全没有出现在任何 Derivation input/output 中的 Node，且只删除该 Node metadata 与其 Confirmation，不删除正文或级联删除其他实体。Derivation remove 只删除目标 Derivation；所有 Node 与 Confirmation 保留，并由剩余图自然重算角色与状态。
+
 ## 7. 影响与查询
 
 影响从 input Node 沿 Derivation 传播到全部 outputs。显式 impact 查询始终从指定 Node 遍历，不依赖其当前状态。review order 则只保留指定范围内 reasons 非空的 Node，直接使用稳定全局拓扑序，上游先于下游且每个 Node 只出现一次。
@@ -207,7 +216,7 @@ confirm 表示人或 Agent 已实际检查目标 Node 的当前文件；若它�
 
 查询可以按 Node ID、name 或已登记文件路径定位，操作目标仍是 Node。查询路径可将开头单个 `./` 和 Windows `\` 分隔符规范化为仓库相对 POSIX 路径；绝对路径、drive path 和包含 `..` 的路径不会匹配。未登记文件返回 `unknown_node` 查询错误，但不构成图校验错误，也不触发自动登记。
 
-`query_project_graph` 是 Human Interface 与 Agent Interface 的共同基础。它直接复用 scan 状态、图拓扑和统一 Derivation presenter；Derivation 作为完整多输入、多输出实体返回。Project Graph v2 的 Node 按拓扑序、Derivation 按 Derivation ID、角色按 Node ID 排序；CLI 默认文本可在展示层投影为拓扑阅读顺序，但不得改变机器协议。展示层不得把投影邻接边误作规范 Derivation 事实，也不得加入坐标、颜色、折叠或选择状态等 UI 私有数据。
+`query_project_graph` 是 Human Interface 与 Agent Interface 的共同基础。它直接复用 scan 状态、图拓扑和统一 Derivation presenter；Derivation 作为包含 `name` 的完整多输入、多输出实体返回。Project Graph v3 的 Node 按拓扑序、Derivation 按 Derivation ID、角色按 Node ID 排序；CLI 默认文本可在展示层投影为拓扑阅读顺序，但不得改变机器协议。展示层不得把投影邻接边误作规范 Derivation 事实，也不得加入坐标、颜色、折叠或选择状态等 UI 私有数据。
 
 ## 8. 持久化
 
@@ -235,13 +244,13 @@ Human Interface 的 revision adapter 不维护第二份图。它对 `.kflow/proj
 
 Git History 只执行当前 `HEAD` 上针对 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 和 `<project-relative-path>/.kflow/derivations/` 的 path-limited log；每个仓库相对路径都使用 Git literal pathspec，项目目录中的空格、中文或 pathspec 元字符不改变查询范围。结果按提交时间顺序从新到旧最多返回 30 条（内部上限 100）。Confirmation 是 review 基线而不是 Graph Diff 结构，因此 confirmation-only commit 不进入结构历史列表；普通正文提交也不进入列表。`HEAD` 是独立默认基准；若它本身是结构提交，不在 `commits` 中重复返回。列表不预先扫描每个 commit 的项目图；某个快照缺少 KFlow 项目或包含无效元数据时，只让该次 Graph Diff 降级。
 
-结构差异按稳定 ID 对齐 Node 与 Derivation。Node 只比较 `id`、`name`、`files`；Derivation 比较 `id`、`short`、`detail`、完整 `inputs` 和 `outputs` 角色；拓扑变化比较公共查询返回的确定性 `topological_order`。`status`、`reasons` 和 `changed_files` 是当前 review 状态，不属于结构历史差异。Graph Diff 独立协议当前为 `schema_version: 2`，其 `base` 同时记录请求 reference、解析后的完整 commit、短 SHA、subject 和 committed time。当前仍不支持 commit A vs commit B、branch/tag 选择、完整时间线、历史图替换主画布、Git patch、checkout 和编辑能力。
+结构差异按稳定 ID 对齐 Node 与 Derivation。Node 只比较 `id`、`name`、`files`；Derivation 比较 `id`、`name`、`short`、`detail`、完整 `inputs` 和 `outputs` 角色；拓扑变化比较公共查询返回的确定性 `topological_order`。`status`、`reasons` 和 `changed_files` 是当前 review 状态，不属于结构历史差异。Graph Diff 独立协议当前为 `schema_version: 3`，其 `base` 同时记录请求 reference、解析后的完整 commit、短 SHA、subject 和 committed time。当前仍不支持 commit A vs commit B、branch/tag 选择、完整时间线、历史图替换主画布、Git patch、checkout 和编辑能力。
 
 ## 9. 接口冻结
 
 - 用户命令固定为顶层 `kflow <command>`，没有版本命令组。
 - 正式 Python 领域入口位于 `kflow.core`。
-- JSON 结果通过各协议的 `schema_version` 管理机器兼容性；Git metadata v2、Project Graph v2 与 task query v3 是独立边界。
+- JSON 结果通过各协议的 `schema_version` 管理机器兼容性；Git metadata v3、Project Graph v3、context/impact v4、review-order v3 与 entity mutation v4 是独立边界。
 - 人类输出可以改善措辞与布局，但必须复用同一事实、reasons、impact 和 review order。
 - Agent 适配层不得复制影响传播或排序算法。
 - Human Interface 必须调用完整项目图公共查询，不得直接读取 `.kflow` JSON 后复制领域、状态、Derivation 序列化或排序逻辑。

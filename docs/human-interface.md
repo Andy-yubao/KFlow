@@ -77,15 +77,15 @@ POST /api/shutdown
 
 `GET /api/revision` 返回不透明的 `project_revision` 与 `git_revision`。前者按规范相对路径的确定顺序覆盖 `.kflow/project.json`、Node、Derivation、Confirmation 和公共项目图已登记文件的存在性、文件类型、`st_size` 与 `st_mtime_ns`；稳定轮询不读取登记文件正文。后者只覆盖 `git symbolic-ref HEAD` 与 `git rev-parse HEAD` 的轻量结果，不执行 Git History 查询。服务只在内存中保留公共查询返回的登记路径集来确定监测范围，不缓存第二份项目图；首次 revision 请求可以建立范围，之后只在 `.kflow` 元数据状态 token 改变时再次调用 `query_project_graph()`，以纳入新增登记路径并移除已删除 Node 的路径。无关未登记文件不改变项目 token，项目外符号链接只记录为不安全状态而不读取目标正文。
 
-`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v2，Review Order 使用 task query schema v3。文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达；正常 CLI 生命周期不会为未初始化目录启动这个 HTTP 服务。
+`GET /api/project` 直接返回当前 `ProjectGraphResult`，不定义第二套 DTO，不经过 CLI stdout，也不缓存第二份长期状态。`GET /api/review-order` 直接返回 `query_review_order(root)`，前端不重新计算检查范围或顺序。Project Graph 使用 schema v3，Review Order 保持 schema v3。文件缺失或其他领域问题仍通过正常 HTTP JSON 响应返回，使用 `result.ok == false` 和 `issues` 表达；正常 CLI 生命周期不会为未初始化目录启动这个 HTTP 服务。
 
 `GET /api/git-history` 返回独立的 `schema_version: 1` Git History 协议。`head` 包含当前 tip 的完整和短 commit SHA、subject 与 committed time；`commits` 只包含当前 `HEAD` 可达、修改过 `<project-relative-path>/.kflow/project.json`、`<project-relative-path>/.kflow/nodes/` 或 `<project-relative-path>/.kflow/derivations/` 的近期结构提交，按新到旧排列，默认最多 30 条、内部上限 100。仓库相对路径使用 literal Git pathspec，因此目录中的空格、中文和 pathspec 元字符不会扩大匹配范围。confirmation-only commit 和普通正文提交不进入列表。若 `HEAD` 本身是结构提交，它只作为独立默认项出现，不在 `commits` 重复。端点不扫描所有历史图来预判有效性。
 
-`GET /api/graph-diff` 返回独立的 `schema_version: 2` Graph Diff 协议，不改变或冒充 `ProjectGraphResult.schema_version`。无 query 时固定比较 working tree vs `HEAD`；`?base=<full-commit-sha>` 比较 working tree vs selected commit。可用结果包含 `base.reference`、解析后的完整和短 commit SHA、subject、committed time、计数 `summary`、Node/Derivation 的 `added`、`removed`、`changed`、变化前后拓扑顺序和 `issues`。`changed` 项包含固定顺序的 `changed_fields` 以及 `before` / `after` 公开结构快照；全部数组按 ID 确定性排序。
+`GET /api/graph-diff` 返回独立的 `schema_version: 3` Graph Diff 协议，不改变或冒充 `ProjectGraphResult.schema_version`。无 query 时固定比较 working tree vs `HEAD`；`?base=<full-commit-sha>` 比较 working tree vs selected commit。可用结果包含 `base.reference`、解析后的完整和短 commit SHA、subject、committed time、计数 `summary`、Node/Derivation 的 `added`、`removed`、`changed`、变化前后拓扑顺序和 `issues`。`changed` 项包含固定顺序的 `changed_fields` 以及 `before` / `after` 公开结构快照；全部数组按 ID 确定性排序。
 
 历史 base 只接受非空十六进制完整 object ID，并再次确认它解析为 commit 且可从当前 `HEAD` 到达；不接受 branch、tag、`HEAD~n`、pathspec 或其他 Git 参数。明显非法的 query 返回 HTTP 400 和稳定的 unavailable 空集合；commit 不存在、不可达、archive 失败或快照图无效则以 HTTP 200 只降级该次比较。
 
-Node 按 ID 对齐，只比较 `id`、`name` 和 `files`。Derivation 按 ID 对齐，整体比较 `id`、`short`、`detail`、`inputs`、`outputs`，每个角色保留 `node`、`name`、`short`、`detail`，多输入、多输出不会展开为笛卡尔积。Confirmation 属于 review 基线；它与 `status`、`reasons`、`changed_files` 一样不属于 Graph Diff 结构。`topology_changed` 表示公共查询的确定性拓扑顺序是否变化。
+Node 按 ID 对齐，只比较 `id`、`name` 和 `files`。Derivation 按 ID 对齐，整体比较 `id`、`name`、`short`、`detail`、`inputs`、`outputs`，每个角色保留 `node`、`name`、`short`、`detail`，多输入、多输出不会展开为笛卡尔积。Confirmation 属于 review 基线；它与 `status`、`reasons`、`changed_files` 一样不属于 Graph Diff 结构。`topology_changed` 表示公共查询的确定性拓扑顺序是否变化。
 
 Git 不可用、非 Git 项目、无 `HEAD`、history/archive 失败或快照不是有效 KFlow 项目时，对应端点仍返回 HTTP 200、`ok: true`、`available: false` 和结构化 issue。Graph Diff unavailable 结果还严格保持 `base`、`summary` 为 `null`，六类差异数组及 before/after topological order 全部为空。Project Graph 与 Review Order 属于核心数据，完成后立即显示；Git History 与 Graph Diff 属于辅助数据，其缓慢、失败或解析错误只影响对应面板。连续 Reload 会取消旧请求并忽略仍然返回的旧结果，不让旧错误、loading 状态或历史基线覆盖最新状态。
 

@@ -100,13 +100,13 @@ kflow validate
 新知识只有在值得长期保存来源与影响时才登记：
 
 ```bash
-kflow add-node api-design --file docs/api.md
+kflow node add api-design --file docs/api.md
 ```
 
 关系明确后，以一次完整活动登记 Derivation：
 
 ```bash
-kflow derive --short "架构形成接口和测试" --input architecture "提供组件边界" --output api-design "形成接口契约" --output test-plan "形成验证计划"
+kflow derivation add architecture-to-plans --short "架构形成接口和测试" --input architecture "提供组件边界" --output api-design "形成接口契约" --output test-plan "形成验证计划"
 ```
 
 不得把多输入、多输出推导拆成意义不完整的二元边，也不得根据正文或文件名自动猜测关系。

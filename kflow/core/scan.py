@@ -223,6 +223,46 @@ class DownstreamConfirmationError(ValueError):
         super().__init__(detail)
 
 
+def _scan_for_downstream(
+    root: Path,
+    *,
+    root_id: str | None,
+    confirmed: tuple[str, ...],
+    failed_node: str | None,
+) -> ScanResult:
+    """Run one scan for a downstream batch, keeping every failure on v1.
+
+    ``scan()`` reports validation issues in ``ScanResult.issues`` but raises
+    ``StorageError`` for corrupt or unreadable metadata and
+    ``GraphValidationError`` for invalid graphs. A legitimate downstream
+    invocation must present all of these as DownstreamConfirmationError so the
+    CLI keeps the result on the Downstream Confirm v1 contract instead of falling
+    back to a generic task-query envelope. Initial, mid-run and final scans all
+    pass through here with the partial state known at that point, so the raised
+    error reports exactly which baseline writes already succeeded.
+    """
+    try:
+        return scan(root)
+    except GraphValidationError as error:
+        issues = tuple(
+            ScanIssue(issue.code, issue.message, issue.references)
+            for issue in error.issues
+        )
+        raise DownstreamConfirmationError(
+            root=root_id,
+            confirmed=confirmed,
+            failed_node=failed_node,
+            issues=issues,
+        ) from error
+    except StorageError as error:
+        raise DownstreamConfirmationError(
+            root=root_id,
+            confirmed=confirmed,
+            failed_node=failed_node,
+            issues=(ScanIssue("invalid_project", str(error).strip("'")),),
+        ) from error
+
+
 def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmationResult:
     """Confirm the target and its reachable review debt in stable topological order.
 
@@ -242,23 +282,7 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
     ``failed_node`` as ``None``; earlier writes are retained.
     """
     root = Path(root)
-    try:
-        initial = scan(root)
-    except GraphValidationError as error:
-        issues = tuple(
-            ScanIssue(issue.code, issue.message, issue.references)
-            for issue in error.issues
-        )
-        raise DownstreamConfirmationError(
-            root=None, confirmed=(), failed_node=None, issues=issues
-        ) from error
-    except StorageError as error:
-        raise DownstreamConfirmationError(
-            root=None,
-            confirmed=(),
-            failed_node=None,
-            issues=(ScanIssue("invalid_project", str(error).strip("'")),),
-        ) from error
+    initial = _scan_for_downstream(root, root_id=None, confirmed=(), failed_node=None)
 
     try:
         root_id = resolve_node_id(initial.graph, node_reference)
@@ -286,7 +310,12 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
     for node_id in initial.graph.topological_order():
         if node_id not in scope:
             continue
-        current = scan(root)
+        current = _scan_for_downstream(
+            root,
+            root_id=root_id,
+            confirmed=tuple(confirmed),
+            failed_node=node_id,
+        )
         if current.issues:
             raise DownstreamConfirmationError(
                 root=root_id,
@@ -310,7 +339,12 @@ def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmatio
             ) from error
         confirmed.append(node_id)
 
-    final = scan(root)
+    final = _scan_for_downstream(
+        root,
+        root_id=root_id,
+        confirmed=tuple(confirmed),
+        failed_node=None,
+    )
     if final.issues:
         # Post-write verification found blocking issues. Earlier writes stay; this
         # is a partial failure with no single failed Node to blame.

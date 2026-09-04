@@ -7,7 +7,7 @@ from importlib import import_module
 
 import pytest
 
-from kflow.core.graph import KnowledgeGraph
+from kflow.core.graph import GraphValidationError, KnowledgeGraph, ValidationIssue
 from kflow.core.models import (
     Derivation,
     DerivationInput,
@@ -23,6 +23,7 @@ from kflow.core.scan import (
     scan,
 )
 from kflow.core.storage import (
+    StorageError,
     initialize_project,
     load_confirmations,
     save_derivation,
@@ -467,6 +468,94 @@ def test_downstream_invalid_metadata_is_a_downstream_domain_error(tmp_path) -> N
     assert error.value.failed_node is None
     assert error.value.confirmed == ()
     assert error.value.issues[0].code == "invalid_project"
+
+
+def test_downstream_mid_run_scan_storage_error_is_partial_and_explicit(
+    tmp_path, monkeypatch
+) -> None:
+    """A mid-run scan() throwing still reports a v1 partial failure."""
+    build_project(
+        tmp_path,
+        ("a", "b", "c"),
+        (
+            ("a-to-b", ("a",), ("b",)),
+            ("b-to-c", ("b",), ("c",)),
+        ),
+        confirm_all=True,
+    )
+    change_file(tmp_path, "a", "a changed")
+    before = confirmation_bytes(tmp_path)
+
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_before_b(root):
+        # Scans so far: initial, a-current, a-before, a-after. The next one is
+        # the current scan that prepares candidate b.
+        nonlocal calls
+        calls += 1
+        if calls == 5:
+            raise StorageError("simulated metadata failure")
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_before_b)
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "a")
+
+    assert error.value.root == "nd_a"
+    assert error.value.confirmed == ("nd_a",)
+    assert error.value.failed_node == "nd_b"
+    assert error.value.issues[0].code == "invalid_project"
+    # a's write is retained; b and c are never written after the mid-run failure.
+    assert confirmation_bytes(tmp_path)["nd_a"] != before["nd_a"]
+    assert confirmation_bytes(tmp_path)["nd_b"] == before["nd_b"]
+    assert confirmation_bytes(tmp_path)["nd_c"] == before["nd_c"]
+
+
+def test_downstream_final_scan_error_is_partial_without_a_failed_node(
+    tmp_path, monkeypatch
+) -> None:
+    """A final scan() throwing keeps every write and reports no single failure."""
+    build_project(
+        tmp_path,
+        ("a", "b", "c"),
+        (
+            ("a-to-b", ("a",), ("b",)),
+            ("b-to-c", ("b",), ("c",)),
+        ),
+        confirm_all=True,
+    )
+    change_file(tmp_path, "a", "a changed")
+    before = confirmation_bytes(tmp_path)
+
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_final_verification(root):
+        # a, b and c each trigger a current scan plus confirm's before/after scan
+        # (9 calls), after the initial scan (1). The 11th is the post-write
+        # verification scan.
+        nonlocal calls
+        calls += 1
+        if calls == 11:
+            raise GraphValidationError(
+                (ValidationIssue("cycle", "simulated graph error"),)
+            )
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_final_verification)
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "a")
+
+    assert error.value.root == "nd_a"
+    assert error.value.failed_node is None
+    assert error.value.confirmed == ("nd_a", "nd_b", "nd_c")
+    assert error.value.issues[0].code == "cycle"
+    assert confirmation_bytes(tmp_path)["nd_a"] != before["nd_a"]
+    assert confirmation_bytes(tmp_path)["nd_b"] != before["nd_b"]
+    assert confirmation_bytes(tmp_path)["nd_c"] != before["nd_c"]
 
 
 def test_downstream_accepts_exact_node_id_path_and_name_references(tmp_path) -> None:

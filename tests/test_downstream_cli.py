@@ -6,16 +6,16 @@ from importlib import import_module
 import pytest
 
 from kflow.cli import main
-from kflow.core.graph import KnowledgeGraph
+from kflow.core.graph import GraphValidationError, KnowledgeGraph, ValidationIssue
 from kflow.core.models import (
     Derivation,
     DerivationInput,
     DerivationOutput,
     KnowledgeNode,
 )
-from kflow.core.scan import confirm
+from kflow.core.scan import confirm, scan
 from kflow.core.schema_versions import DOWNSTREAM_CONFIRM_SCHEMA_VERSION
-from kflow.core.storage import initialize_project, save_graph
+from kflow.core.storage import StorageError, initialize_project, save_graph
 
 scan_module = import_module("kflow.core.scan")
 
@@ -395,3 +395,136 @@ def test_confirm_downstream_final_query_issue_text_never_says_clear(
     assert "Confirmed:\n1. a" in captured.out
     assert "Reason:" in captured.out
     assert "missing_file" in captured.out
+
+
+def test_confirm_downstream_mid_run_scan_error_uses_downstream_v1_json(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A mid-run scan() StorageError stays on v1 and keeps the confirmed Node."""
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_before_b(root):
+        nonlocal calls
+        calls += 1
+        if calls == 5:  # the current scan preparing candidate b
+            raise StorageError("simulated metadata failure")
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_before_b)
+
+    result = run_json_error(capsys, "confirm", "a", "--downstream")
+
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"] == {"id": "nd_a", "name": "a", "files": ["docs/a.md"]}
+    assert result["confirmed"] == [{"id": "nd_a", "name": "a", "files": ["docs/a.md"]}]
+    assert result["failed_node"] == {
+        "id": "nd_b",
+        "name": "b",
+        "files": ["docs/b.md"],
+    }
+    assert result["issues"][0]["code"] == "invalid_project"
+    # The batch stopped before rewriting b or c.
+    assert scan(tmp_path).statuses["nd_b"].needs_review is True
+    assert scan(tmp_path).statuses["nd_c"].needs_review is True
+
+
+def test_confirm_downstream_mid_run_scan_error_is_explicit_in_text(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_before_b(root):
+        nonlocal calls
+        calls += 1
+        if calls == 5:  # the current scan preparing candidate b
+            raise StorageError("simulated metadata failure")
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_before_b)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["confirm", "a", "--downstream"])
+    captured = capsys.readouterr()
+
+    assert exit_info.value.code == 2
+    assert captured.err == ""
+    assert "Confirmed downstream from: a" in captured.out
+    assert "Confirmed:\n1. a" in captured.out
+    assert "Stopped at: b" in captured.out
+    assert "Review scope is clear." not in captured.out
+
+
+def test_confirm_downstream_final_scan_error_uses_downstream_v1_json(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A final scan() error keeps every write with no single failed Node."""
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_final_verification(root):
+        nonlocal calls
+        calls += 1
+        if calls == 11:  # the post-write verification scan after a, b and c
+            raise GraphValidationError(
+                (ValidationIssue("cycle", "simulated graph error"),)
+            )
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_final_verification)
+
+    result = run_json_error(capsys, "confirm", "a", "--downstream")
+
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"] == {"id": "nd_a", "name": "a", "files": ["docs/a.md"]}
+    assert result["confirmed"] == [
+        {"id": "nd_a", "name": "a", "files": ["docs/a.md"]},
+        {"id": "nd_b", "name": "b", "files": ["docs/b.md"]},
+        {"id": "nd_c", "name": "c", "files": ["docs/c.md"]},
+    ]
+    assert result["failed_node"] is None
+    assert result["issues"][0]["code"] == "cycle"
+
+
+def test_confirm_downstream_final_scan_error_never_claims_success(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    change_file(tmp_path, "a", "a changed")
+    real_scan = scan_module.scan
+    calls = 0
+
+    def corrupt_final_verification(root):
+        nonlocal calls
+        calls += 1
+        if calls == 11:  # the post-write verification scan after a, b and c
+            raise GraphValidationError(
+                (ValidationIssue("cycle", "simulated graph error"),)
+            )
+        return real_scan(root)
+
+    monkeypatch.setattr(scan_module, "scan", corrupt_final_verification)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["confirm", "a", "--downstream"])
+    captured = capsys.readouterr()
+
+    assert exit_info.value.code == 2
+    assert captured.err == ""
+    assert "Review scope is clear." not in captured.out
+    assert "3 nodes confirmed." not in captured.out
+    assert "Confirmed downstream from: a" in captured.out
+    assert "Confirmed:\n1. a" in captured.out
+    assert "Reason:" in captured.out
+    assert "simulated graph error" in captured.out

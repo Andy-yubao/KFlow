@@ -142,7 +142,7 @@ kflow/human/static/    # Vite 生成并由 Python 包分发的静态产物
 
 当前版本提供后台 start/status/stop、revision 自动更新、手动 Reload、单页面项目摘要、完整知识图、结构角色与 Layer、独立状态 badge、缩放、平移、搜索、状态筛选、Only needs review、直接邻接高亮、Review Order、Graph Diff vs HEAD / selected structural commit、Knowledge Node 与 Derivation 选择、详情 Inspector、已登记文件 Open 和错误/空项目状态。正式桌面布局已收紧纵向高度：主画布占用可用高度，右侧面板在需要时滚动；窄屏继续使用响应式排列。
 
-Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。悬停显示 `short` 的轻量 tooltip，单击后 Inspector 显示 ID、完整语义和全部输入输出角色。搜索有命中时只降低非命中上下文的透明度；没有任何 Node 或 Derivation 命中时保持图的正常不透明度，并在搜索框附近显示明确提示。状态与 needs-review 筛选仍独立控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
+Knowledge Node 保持 `240 × 120` 主卡片；Derivation 使用 `32 × 32` 边上连接点，Dagre 同步使用相同尺寸。Derivation 的 `name` 是主要可见身份；悬停 tooltip 分别显示 `name` 与 `short`，单击后 Inspector 分别显示 `name`、`short`、`detail` 和全部 input/output 角色。搜索有命中时只降低非命中上下文的透明度；没有任何 Node 或 Derivation 命中时保持图的正常不透明度，并在搜索框附近显示明确提示。状态与 needs-review 筛选仍独立控制可见 Node，Derivation 在至少一个相关 Node 可见时保留。选择元素时只高亮直接邻接，不计算传递闭包。
 
 Graph Diff 面板默认显示 `HEAD`，并提供紧凑的结构提交选择器；每项显示短 SHA、subject 和 committed time。切换基准只请求 Graph Diff，不重新请求项目图或 Review Order；快速切换同时使用请求取消和单调 request id，较早响应不能覆盖最新选择。Reload 在原 SHA 仍位于历史列表时保留选择，否则回退 `HEAD`。Changed 项显示公开结构的 before → after；当前仍存在的新增或修改实体复用 `ProjectContext` 的选择与画布定位；已删除实体只显示历史公开结构，不尝试选择当前不存在的画布元素。这里的 `topology_changed` 只表示稳定拓扑顺序是否变化，不表示任意边结构是否变化。
 
@@ -150,23 +150,7 @@ Graph Diff 面板默认显示 `HEAD`，并提供紧凑的结构提交选择器�
 
 当前不实现 commit A vs commit B、分支/tag 选择、完整历史时间线、历史图替换主画布、Git patch 或正文 diff、checkout、编辑、confirm、正文预览、自动摘要、文件系统 watcher、WebSocket、远程访问和桌面封装。
 
-## 10. 后续演进
-
-```text
-阶段 1：只读项目图（已完成）
-阶段 2：搜索、筛选、直接邻接高亮和 review order（已完成）
-阶段 3：Git-backed graph history / diff
-  - Current working tree vs HEAD graph diff MVP（已完成）
-  - Recent structural commit selector + working tree vs selected commit（已完成）
-  - Commit A vs Commit B（未开始）
-  - Historical graph as main canvas（未开始）
-阶段 4：编辑能力另行评估
-阶段 5：桌面封装另行评估
-```
-
-这些阶段只记录方向，不为尚未确认的需求预建接口、插件或空抽象。
-
-## 11. 防止过度工程
+## 10. 防止过度工程
 
 每一层新增抽象都必须消除当前真实重复，或直接支持已经确认的近期功能。不要为了假设中的未来需求增加架构。
 

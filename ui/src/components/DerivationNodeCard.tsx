@@ -12,8 +12,8 @@ export function DerivationNodeCard({
   return (
     <div
       className={`graph-node derivation-node ${selected ? "selected" : ""}`}
-      title={derivation.short}
-      aria-label={`Derivation: ${derivation.short}`}
+      title={`${derivation.name} — ${derivation.short}`}
+      aria-label={`Derivation: ${derivation.name}. ${derivation.short}`}
       tabIndex={0}
       onMouseEnter={() => setTooltipVisible(true)}
       onMouseLeave={() => setTooltipVisible(false)}
@@ -24,7 +24,8 @@ export function DerivationNodeCard({
       <span className="derivation-mark" aria-hidden="true">◆</span>
       {tooltipVisible && (
         <span className="derivation-tooltip" role="tooltip">
-          {derivation.short}
+          <strong>{derivation.name}</strong>
+          <span>{derivation.short}</span>
         </span>
       )}
       <Handle type="source" position={Position.Right} />

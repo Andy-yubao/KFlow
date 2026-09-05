@@ -56,7 +56,8 @@ describe("graph node cards", () => {
     );
   });
 
-  it("keeps the full Derivation short text available", () => {
+  it("uses the Derivation name as its accessible identity", () => {
+    const name = "architecture-design";
     const short = "A complete Derivation short description";
     const props: NodeProps<DerivationFlowNode> = {
       id: "derivation:dv_design",
@@ -65,7 +66,7 @@ describe("graph node cards", () => {
         kind: "derivation",
         derivation: {
           id: "dv_design",
-          name: "design",
+          name,
           short,
           detail: "",
           inputs: [],
@@ -84,7 +85,8 @@ describe("graph node cards", () => {
     };
     const markup = renderToStaticMarkup(<DerivationNodeCard {...props} />);
 
-    expect(markup).toContain(`title="${short}"`);
+    expect(markup).toContain(`title="${name} — ${short}"`);
+    expect(markup).toContain(`aria-label="Derivation: ${name}. ${short}"`);
     expect(markup).toContain("derivation-mark");
     expect(markup).not.toContain("derivation-tooltip");
   });
@@ -115,17 +117,20 @@ describe("graph node cards", () => {
     } satisfies NodeProps<DerivationFlowNode>;
 
     render(<DerivationNodeCard {...props} />);
-    const card = screen.getByLabelText(`Derivation: ${short}`);
-    expect(card.getAttribute("title")).toBe(short);
+    const card = screen.getByLabelText(`Derivation: design. ${short}`);
+    expect(card.getAttribute("title")).toBe(`design — ${short}`);
     expect(screen.queryByRole("tooltip")).toBeNull();
 
     fireEvent.mouseEnter(card);
-    expect(screen.getByRole("tooltip").textContent).toBe(short);
+    expect(screen.getByRole("tooltip").textContent).toBe(`design${short}`);
+    expect(screen.getByRole("tooltip").querySelector("strong")?.textContent).toBe(
+      "design",
+    );
     fireEvent.mouseLeave(card);
     expect(screen.queryByRole("tooltip")).toBeNull();
 
     fireEvent.focus(card);
-    expect(screen.getByRole("tooltip").textContent).toBe(short);
+    expect(screen.getByRole("tooltip").textContent).toBe(`design${short}`);
     fireEvent.blur(card);
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(derivation).toEqual(props.data.derivation);

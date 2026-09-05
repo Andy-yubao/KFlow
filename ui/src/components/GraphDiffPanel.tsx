@@ -204,7 +204,7 @@ function ChangedDerivationItem({ change }: { change: ChangedDerivation }) {
       <button
         className="current-diff-select"
         type="button"
-        aria-label={`Select current Derivation ${change.after.short}`}
+        aria-label={`Select current Derivation ${change.after.name}`}
         onClick={() =>
           selectGraphDiffElement({ kind: "derivation", id: change.id })
         }
@@ -295,8 +295,9 @@ function DerivationItem({
   ].join(" → ");
   const content = (
     <>
-      <strong>{derivation.short}</strong>
+      <strong>{derivation.name}</strong>
       <code>{derivation.id}</code>
+      <small>{derivation.short}</small>
       {derivation.detail && <small>{derivation.detail}</small>}
       <small>{endpoints}</small>
     </>

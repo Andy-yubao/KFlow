@@ -81,10 +81,11 @@ export function InspectorPanel({ graph, selected }: InspectorProps) {
     <aside className="inspector">
       <div className="panel-heading">
         <span className="eyebrow">Derivation</span>
-        <h2>{derivation.short}</h2>
+        <h2>{derivation.name}</h2>
         <code>{derivation.id}</code>
       </div>
-      {derivation.detail && <section><h3>Detail</h3><p>{derivation.detail}</p></section>}
+      <section><h3>Short</h3><p>{derivation.short}</p></section>
+      <section><h3>Detail</h3><p>{derivation.detail || "None"}</p></section>
       <section>
         <h3>Inputs</h3>
         <div className="role-list">

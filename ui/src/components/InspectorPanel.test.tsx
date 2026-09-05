@@ -86,7 +86,10 @@ describe("InspectorPanel interactions", () => {
     render(<InspectorPanel graph={graph} selected={selected} />);
 
     expect(selected).toEqual({ kind: "derivation", id: "dv_design" });
-    expect(screen.getByRole("heading", { name: "Input creates output" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "design" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Short" })).toBeTruthy();
+    expect(screen.getByText("Input creates output")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Detail" })).toBeTruthy();
     expect(screen.getByText("The complete derivation detail.")).toBeTruthy();
     expect(screen.getByText("Provides source facts")).toBeTruthy();
     expect(screen.getByText("Creates the result")).toBeTruthy();

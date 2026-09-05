@@ -101,7 +101,14 @@ function result(): GraphDiffResult {
     },
     derivations: {
       added: [derivation],
-      removed: [{ ...derivation, id: "dv_removed", short: "Removed Derivation" }],
+      removed: [
+        {
+          ...derivation,
+          id: "dv_removed",
+          name: "removed-derivation",
+          short: "Removed Derivation",
+        },
+      ],
       changed: [
         {
           id: "dv_changed",
@@ -298,6 +305,10 @@ describe("GraphDiffPanel", () => {
     expect(screen.queryByRole("button", { name: /Removed Derivation/ })).toBeNull();
     expect(screen.getByText("removed.md")).toBeTruthy();
     expect(screen.getByText("Removed Derivation")).toBeTruthy();
+    expect(screen.getByText("added-derivation")).toBeTruthy();
+    expect(screen.getByText("removed-derivation")).toBeTruthy();
+    expect(screen.getByText("legacy-api")).toBeTruthy();
+    expect(screen.getByText("validated-api")).toBeTruthy();
   });
 
   it("selects an earlier structural commit and updates the title", async () => {

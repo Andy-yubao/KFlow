@@ -76,6 +76,35 @@ describe("read request cancellation", () => {
   });
 });
 
+describe("Project Graph v3 compatibility", () => {
+  it("rejects a legacy Derivation fixture without a name", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          schema_version: 3,
+          nodes: [],
+          derivations: [
+            {
+              id: "dv_legacy",
+              short: "Legacy short used as identity",
+              detail: "",
+              inputs: [],
+              outputs: [],
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+
+    await expect(fetchProjectGraph()).rejects.toThrow(
+      "missing its nodes or derivations array",
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("parseRevision", () => {
   it("accepts opaque non-empty project and Git tokens", () => {
     const revision = {

@@ -163,11 +163,12 @@ def _spawn_background(
         candidate = _load_state(path)
         if (
             candidate is not None
-            and candidate.pid == process.pid
             and candidate.instance_id == instance_id
             and candidate.control_token == control_token
             and _health_matches(candidate, project_root)
         ):
+            # A Windows venv's python.exe can be a launcher whose PID differs
+            # from the actual interpreter process recorded by the service.
             state = candidate
             break
         time.sleep(0.05)

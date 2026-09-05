@@ -7,6 +7,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -85,6 +86,50 @@ def test_start_reuses_one_verified_instance_and_opens_existing_url(
 
     assert result == existing
     assert opened == [existing.url]
+
+
+def test_spawn_accepts_service_pid_that_differs_from_a_venv_launcher(
+    tmp_path, monkeypatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    path = tmp_path / "state" / "instance.json"
+    path.parent.mkdir()
+    service = _state(
+        project,
+        pid=os.getpid(),
+        instance_id="service-instance",
+        control_token="service-token",
+    )
+
+    class VenvLauncher:
+        pid = service.pid + 1000
+
+        @staticmethod
+        def poll():
+            return None
+
+    monkeypatch.setattr(
+        runtime.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex="service-instance"),
+    )
+    monkeypatch.setattr(runtime.secrets, "token_urlsafe", lambda _size: "service-token")
+    monkeypatch.setattr(
+        runtime.subprocess, "Popen", lambda *_args, **_kwargs: VenvLauncher()
+    )
+    monkeypatch.setattr(runtime, "_load_state", lambda _path: service)
+    monkeypatch.setattr(runtime, "_health_matches", lambda *_args: True)
+
+    result = runtime._spawn_background(
+        project,
+        path,
+        port=0,
+        open_browser=False,
+    )
+
+    assert result == service
+    assert result.pid != VenvLauncher.pid
 
 
 def test_start_rejects_uninitialized_project_before_any_side_effect(

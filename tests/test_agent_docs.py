@@ -18,3 +18,19 @@ def test_agent_integration_is_labeled_as_programmatic_adapter() -> None:
     assert "程序化适配层" in integration
     assert "不是 Agent 的直接终端工作流" in integration
     assert "--json" in integration
+
+
+def test_current_docs_use_only_the_noun_first_entity_commands() -> None:
+    documents = [
+        Path("README.md"),
+        Path("AGENTS.md"),
+        Path("CLAUDE.md"),
+        *Path("docs").glob("*.md"),
+    ]
+    contents = "\n".join(path.read_text(encoding="utf-8") for path in documents)
+
+    assert "kflow node add" in contents
+    assert "kflow derivation add" in contents
+    assert "kflow add-node" not in contents
+    assert "kflow review-plan" not in contents
+    assert "docs/history" not in contents

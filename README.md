@@ -63,9 +63,9 @@ kflow node add deployment-plan --file docs/deployment-plan.md
 #### 3. 声明完整 Derivation
 
 ```bash
-kflow derivation add requirements-to-architecture --short "需求与约束形成架构" --input requirements "提供产品目标" --input constraints "提供运行边界" --output architecture "形成系统结构"
-kflow derivation add architecture-to-plans --short "架构形成接口与测试方案" --input architecture "提供组件边界" --output api-design "形成接口设计" --output testing-plan "形成测试方案"
-kflow derivation add api-to-deployment --short "接口设计形成部署方案" --input api-design "提供运行接口" --output deployment-plan "形成部署计划"
+kflow derivation add requirements-to-architecture --short "需求与约束形成架构" --detail "综合产品目标和运行边界，形成系统结构。" --input requirements "提供产品目标" --input constraints "提供运行边界" --output architecture "形成系统结构"
+kflow derivation add architecture-to-plans --short "架构形成接口与测试方案" --detail "从组件边界同时形成接口和验证计划。" --input architecture "提供组件边界" --output api-design "形成接口设计" --output testing-plan "形成测试方案"
+kflow derivation add api-to-deployment --short "接口设计形成部署方案" --detail "把运行接口映射为本地交付方式。" --input api-design "提供运行接口" --output deployment-plan "形成部署计划"
 ```
 
 KFlow 不根据文件名或正文猜测关系。每条命令保存一次完整推导，因此多输入和多输出的原子语义不会丢失。
@@ -116,6 +116,25 @@ kflow validate
 
 此时应看到 `Review scope is clear.` 和 `KFlow metadata is valid.`。
 
+#### 6. 维护已有实体
+
+当实体定义变化时使用 `edit`，不要删除后再建一个同名实体。下面把已有 Node 和 Derivation 完整替换为新定义：
+
+```bash
+kflow node edit deployment-plan --name delivery-plan --file docs/deployment-plan.md
+kflow derivation edit api-to-deployment --name api-to-delivery --short "接口设计形成交付方案" --detail "把运行接口映射为本地交付方式。" --input api-design "提供运行接口" --output delivery-plan "形成交付计划"
+```
+
+`edit` 是完整 replacement，因此必须重新声明全部文件或全部 roles；Node 与 Derivation 的 stable ID 都保持不变。rename 会进入正常 review propagation，不会自动确认。继续以 `kflow review-order` 查明范围，并按顺序逐 Node `confirm`。
+
+普通逐 Node confirm 始终是默认。如果一次变化已经被明确判断为纯机械，而且整个下游都已确认无语义变化，才可使用受限的高级能力：
+
+```bash
+kflow confirm requirements --downstream
+```
+
+需求、接口、约束、行为或下游结论发生语义变化时不要使用；拿不准时也不要使用。上面第 5 步的需求变化属于语义变化，必须逐 Node 检查。
+
 ### Part 2 — Git-backed History Demo（可选）
 
 完成基本体验后，可以用一个独立的真实 Git 仓库继续体验结构历史、Graph Diff、Needs review 和 Review Order。这不是首次启动 KFlow 的必要步骤，也不会改变 Part 1 项目。
@@ -158,8 +177,8 @@ kflow init [PATH]
 kflow node add NAME --file PATH [...]
 kflow node edit OLD_NAME --name NEW_NAME --file PATH [...]
 kflow node remove NAME
-kflow derivation add NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
-kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation add NAME --short TEXT [--detail TEXT] --input NODE ROLE --output NODE ROLE [...]
+kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT [--detail TEXT] --input NODE ROLE --output NODE ROLE [...]
 kflow derivation remove NAME
 
 kflow overview [--status]
@@ -255,9 +274,15 @@ KFlow 不是 RAG、代码依赖扫描器或自动知识图谱生成器。它不�
 ## 开发
 
 ```bash
+python -m pip install -e ".[dev]"
 pytest -q
 ruff check .
 ruff format --check .
+cd ui
+npm ci
+npm test
+npm run typecheck
+npm run build
 ```
 
 仓库开发约束见 [AGENTS.md](AGENTS.md)。

@@ -15,8 +15,8 @@ kflow init [PATH]
 kflow node add NAME --file PATH [...]
 kflow node edit OLD_NAME --name NEW_NAME --file PATH [...]
 kflow node remove NAME
-kflow derivation add NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
-kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT --input NODE ROLE --output NODE ROLE [...]
+kflow derivation add NAME --short TEXT [--detail TEXT] --input NODE ROLE --output NODE ROLE [...]
+kflow derivation edit OLD_NAME --name NEW_NAME --short TEXT [--detail TEXT] --input NODE ROLE --output NODE ROLE [...]
 kflow derivation remove NAME
 
 kflow overview [--status]

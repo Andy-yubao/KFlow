@@ -6,6 +6,8 @@
 
 README Quickstart Part 1 面向第一次接触 KFlow 的用户。`scripts/create_readme_quickstart.py` 只生成六个普通文件，用户或 Agent 再亲手执行 `init`、`node add`、`derivation add` 和逐 Node `confirm`，主要学习 Node、Derivation、Confirmation 与影响传播；它不要求 Git 仓库。
 
+Part 1 还包含一次 `node edit` 与一次 `derivation edit`，用于说明 edit 是保持 stable ID 的完整 replacement，rename 会触发正常 review propagation。普通 `review-order` + 逐 Node `confirm` 始终是主流程；`confirm ROOT --downstream` 只在单独的 advanced 说明中用于整个 scope 已确认无语义变化的机械性收尾，语义变化或不确定场景禁止使用。
+
 Quickstart Part 2 是可选的下一阶段。`scripts/setup_git_quickstart_demo.py` 一次性创建独立的真实 Git 仓库、三个结构提交、可选择的历史基准和有意保留的工作树变化，用于低成本体验 Git-backed UI。它不是生产 CLI，也不替代 Part 1。
 
 本文的完整 Demo 面向 Human Interface 开发和高级人工验收。它会自动构造多个 Git 结构提交、Graph Diff 基线和有意保留的未提交变化，以覆盖 Added / Removed / Changed Node 与 Derivation。它不替代基础 Quickstart，也不需要随普通 README 修改自动重构。
@@ -188,8 +190,9 @@ kflow ui start
 - inputs 和 outputs 分别显示 role 的 Added、Removed 和按 Node 对齐的 Changed 字段；
 - 文案为 `Topological order changed.`；
 - Search、Review Order、Inspector 和登记文件 Open 仍正常；
+- Derivation 小点的 hover 分别显示 name 与 short，Inspector 分别显示 name、short、detail、inputs 与 outputs；
 - `notes/personal-note.md` 不出现在图中。
 
 在 1366 × 768 与 1920 × 1080 下确认主画布不再保留明显多余纵向空间，右侧面板可滚动且 React Flow Controls 可用。现有搜索、选择、清除选择和手动缩放引起的 fit view、缩放和平移重置行为是已接受现状；本阶段不验证 viewport persistence。
 
-结束服务使用 `Ctrl+C`。不要在验收结束后顺手提交 Demo 当前变化；未提交状态正是这个 Graph Diff Demo 的设计要求。
+结束服务使用 `kflow ui stop`，再以 `kflow ui status` 确认真正停止。不要在验收结束后顺手提交 Demo 当前变化；未提交状态正是这个 Graph Diff Demo 的设计要求。

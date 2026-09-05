@@ -1,6 +1,6 @@
 # KFlow Agent Skill
 
-> 状态：当前 Agent 使用基线（2026-08-31）
+> 状态：当前 Agent 使用基线（2026-09-05）
 
 ## 目的
 
@@ -22,6 +22,18 @@ Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 
 不需要机械地依次调用所有查询命令。
 
+## 何时维护实体
+
+只把值得长期记住“它从哪里来、变化后影响哪里”的完整文件纳入 KFlow。适合登记为 Node 的文件通常承载长期项目知识、会被反复使用、与其他重要文件有明确推导关系，或其变化需要检查其他知识。临时草稿、缓存、日志、构建产物、可重建生成物、大量普通源码，以及只有主题相似却没有明确逻辑关系的材料，通常不登记；拿不准时保持为普通文件，不为图谱完整而静默纳入。
+
+- 新的重要知识实体：`kflow node add`；Node 可以先独立存在；
+- 已登记 Node 的名称或完整文件集合变化：`kflow node edit`；
+- 新的明确推导活动：`kflow derivation add`，保留完整 N-to-M 语义；
+- 已登记 Derivation 的 name、short、detail 或完整 inputs/outputs 变化：`kflow derivation edit`；
+- 关系失效：`kflow derivation remove`；Node 不再属于 KFlow 且已无任何 Derivation 引用：`kflow node remove`。
+
+`edit` 是完整 replacement，必须重新声明全部 files 或全部 roles，stable ID 不变；rename 和定义变化照常触发 review。正文内容变化但实体定义未变时不调用 edit，直接走查询、检查与 confirm 流程。
+
 ## 结果解释
 
 `overview` 从 `KFlow project:` 开始；`--status` 在项目有效时补充 `Need review:`。每个 Derivation 都完整展示全部 inputs 和 outputs。
@@ -39,10 +51,8 @@ Agent 直接阅读默认文本，根据缺失信息选择一个查询：
 1. 只读取当前任务需要的登记文件；
 2. 对派生 Node 同时检查 producer 与直接输入条件；
 3. 完成真实判断和必要验证后，单独确认该 Node；
-4. 新 Node 只登记值得长期保存来源与影响的完整文件；
-5. 新 Derivation 必须保存一次完整 N-to-M 语义；
-6. 已登记实体定义变化使用 `node edit` / `derivation edit` 完整替换，失效关系使用 `remove`，不另建重名实体；
-7. 只有确有充分理由时才使用受限的 `confirm NODE --downstream`（见下节）。
+4. 实体维护遵循上一节的 add/edit/remove 判断，不自动登记普通文件；
+5. 只有确有充分理由时才使用受限的 `confirm NODE --downstream`（见下节）。
 
 ## 显式批量确认：`confirm NODE --downstream`（受限能力）
 

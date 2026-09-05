@@ -261,6 +261,19 @@ def _scan_for_downstream(
             failed_node=failed_node,
             issues=(ScanIssue("invalid_project", str(error).strip("'")),),
         ) from error
+    except (KeyError, TypeError, ValueError) as error:
+        # The storage decoder does not wrap every malformed metadata field in
+        # StorageError: a Node missing ``name`` or ``files`` still surfaces a
+        # bare KeyError, and illegal field types or model construction raise
+        # TypeError/ValueError. All of these are invalid project metadata, so
+        # keep them on the Downstream Confirm v1 contract as invalid_project
+        # instead of leaking to the generic task-query envelope.
+        raise DownstreamConfirmationError(
+            root=root_id,
+            confirmed=confirmed,
+            failed_node=failed_node,
+            issues=(ScanIssue("invalid_project", str(error).strip("'")),),
+        ) from error
 
 
 def confirm_downstream(root: Path, node_reference: str) -> DownstreamConfirmationResult:

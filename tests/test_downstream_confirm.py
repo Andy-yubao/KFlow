@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from importlib import import_module
 
@@ -468,6 +469,52 @@ def test_downstream_invalid_metadata_is_a_downstream_domain_error(tmp_path) -> N
     assert error.value.failed_node is None
     assert error.value.confirmed == ()
     assert error.value.issues[0].code == "invalid_project"
+
+
+def test_downstream_malformed_node_missing_name_is_invalid_project(tmp_path) -> None:
+    """A decode-stage bare KeyError stays on v1 as invalid_project."""
+    build_project(
+        tmp_path,
+        ("a", "b"),
+        (("a-to-b", ("a",), ("b",)),),
+        confirm_all=True,
+    )
+    node = tmp_path / ".kflow" / "nodes" / "nd_a.json"
+    value = json.loads(node.read_text(encoding="utf-8"))
+    del value["name"]
+    node.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "a")
+
+    assert error.value.root is None
+    assert error.value.failed_node is None
+    assert error.value.confirmed == ()
+    assert error.value.issues[0].code == "invalid_project"
+    assert error.value.issues[0].message == "name"
+
+
+def test_downstream_malformed_node_field_type_is_invalid_project(tmp_path) -> None:
+    """A decode-stage ValueError stays on v1 as invalid_project."""
+    build_project(
+        tmp_path,
+        ("a", "b"),
+        (("a-to-b", ("a",), ("b",)),),
+        confirm_all=True,
+    )
+    node = tmp_path / ".kflow" / "nodes" / "nd_a.json"
+    value = json.loads(node.read_text(encoding="utf-8"))
+    value["name"] = 5
+    node.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(DownstreamConfirmationError) as error:
+        confirm_downstream(tmp_path, "a")
+
+    assert error.value.root is None
+    assert error.value.failed_node is None
+    assert error.value.confirmed == ()
+    assert error.value.issues[0].code == "invalid_project"
+    assert "node name must be non-empty text" in error.value.issues[0].message
 
 
 def test_downstream_mid_run_scan_storage_error_is_partial_and_explicit(

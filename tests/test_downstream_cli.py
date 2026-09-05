@@ -329,6 +329,28 @@ def test_confirm_downstream_invalid_metadata_uses_downstream_v1_envelope(
     assert result["issues"][0]["code"] == "invalid_project"
 
 
+def test_confirm_downstream_malformed_node_metadata_uses_downstream_v1_envelope(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A bare decode KeyError stays on v1 invalid_project, never v3 unknown_node."""
+    monkeypatch.chdir(tmp_path)
+    prepare_chain(tmp_path)
+    node_path = tmp_path / ".kflow" / "nodes" / "nd_a.json"
+    value = json.loads(node_path.read_text(encoding="utf-8"))
+    del value["name"]
+    node_path.write_text(json.dumps(value), encoding="utf-8")
+
+    result = run_json_error(capsys, "confirm", "a", "--downstream")
+
+    assert result["ok"] is False
+    assert result["schema_version"] == DOWNSTREAM_CONFIRM_SCHEMA_VERSION
+    assert result["scope"] is None
+    assert result["confirmed"] == []
+    assert result["failed_node"] is None
+    assert result["issues"][0]["code"] == "invalid_project"
+    assert result["issues"][0]["message"] == "name"
+
+
 def test_confirm_downstream_final_query_issue_is_a_json_failure_preserving_confirmed(
     tmp_path, monkeypatch, capsys
 ) -> None:
